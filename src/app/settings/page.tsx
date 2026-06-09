@@ -33,6 +33,15 @@ export default function SettingsPage() {
   );
 }
 
+const WORKSPACE_COLORS = [
+  { label: "Terracotta", value: "#b5612f" },
+  { label: "Bleu marine", value: "#2563eb" },
+  { label: "Vert forêt", value: "#16a34a" },
+  { label: "Violet", value: "#7c3aed" },
+  { label: "Bordeaux", value: "#9f1239" },
+  { label: "Teal", value: "#0d9488" },
+];
+
 function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,6 +50,8 @@ function SettingsContent() {
   const [density, setDensity] = useState<Density>("regular");
   const [saved, setSaved] = useState(false);
   const [msStatus, setMsStatus] = useState<"unknown" | "connected" | "error">("unknown");
+  const [colorPro, setColorPro] = useState("#b5612f");
+  const [colorPerso, setColorPerso] = useState("#2563eb");
 
   useEffect(() => {
     try {
@@ -50,6 +61,12 @@ function SettingsContent() {
         if (parsed.ton) setTon(parsed.ton);
         if (parsed.layout) setLayout(parsed.layout);
         if (parsed.density) setDensity(parsed.density);
+      }
+      const colors = localStorage.getItem("aria-workspace-colors");
+      if (colors) {
+        const c = JSON.parse(colors);
+        if (c.pro) setColorPro(c.pro);
+        if (c.perso) setColorPerso(c.perso);
       }
     } catch {
       // ignore
@@ -72,6 +89,7 @@ function SettingsContent() {
   function save() {
     const settings: AppSettings = { ton, layout, density };
     localStorage.setItem("aria-settings", JSON.stringify(settings));
+    localStorage.setItem("aria-workspace-colors", JSON.stringify({ pro: colorPro, perso: colorPerso }));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -271,6 +289,55 @@ function SettingsContent() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Couleurs des espaces */}
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <Icon name="palette" size={15} style={{ color: "var(--accent)" }} />
+            <p className="kicker" style={{ margin: 0 }}>Couleurs des espaces de travail</p>
+          </div>
+          {[
+            { label: "Espace Pro", key: "pro" as const, value: colorPro, setter: setColorPro },
+            { label: "Espace Perso", key: "perso" as const, value: colorPerso, setter: setColorPerso },
+          ].map(({ label, value, setter }) => (
+            <div key={label} style={{ marginBottom: 16 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{label}</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {WORKSPACE_COLORS.map((c) => (
+                  <button
+                    key={c.value}
+                    title={c.label}
+                    onClick={() => setter(c.value)}
+                    style={{
+                      width: 28, height: 28, borderRadius: "50%", background: c.value, border: "none",
+                      cursor: "pointer", flexShrink: 0,
+                      outline: value === c.value ? `3px solid ${c.value}` : "none",
+                      outlineOffset: 2,
+                      boxShadow: value === c.value ? "0 0 0 1px white" : "none",
+                      transition: "outline 0.1s",
+                    }}
+                  />
+                ))}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Personnalisé :</span>
+                  <input
+                    type="color"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    style={{ width: 28, height: 28, border: "none", borderRadius: 6, cursor: "pointer", padding: 0, background: "transparent" }}
+                  />
+                </div>
+              </div>
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 14, height: 14, borderRadius: 3, background: value }} />
+                <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>{value}</span>
+              </div>
+            </div>
+          ))}
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
+            La couleur s&apos;applique à l&apos;accent global lors du changement d&apos;espace.
+          </p>
         </div>
 
         {/* Save */}

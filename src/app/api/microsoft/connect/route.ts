@@ -12,6 +12,10 @@ export async function GET(req: NextRequest) {
   const scopes = [
     "User.Read",
     "Mail.Read",
+    "Mail.Send",
+    "Mail.ReadWrite",
+    "Calendars.Read",
+    "Calendars.ReadWrite",
     "Tasks.ReadWrite",
     "Notes.Read",
     "offline_access",

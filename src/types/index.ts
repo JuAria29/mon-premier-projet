@@ -85,4 +85,23 @@ export interface NotePageItem {
   title: string;
   lastModifiedDateTime: string;
   contentUrl?: string;
+  webUrl?: string;
+}
+
+export interface MailFolder {
+  id: string;
+  displayName: string;
+  unreadItemCount: number;
+  totalItemCount: number;
+}
+
+export interface CalendarEvent {
+  id: string;
+  subject: string;
+  start: string;
+  end: string;
+  location?: string;
+  isAllDay: boolean;
+  bodyPreview?: string;
+  organizer?: string;
 }

@@ -50,6 +50,14 @@ export default function DashboardPage() {
       // ignore
     }
 
+    try {
+      const colors = localStorage.getItem("aria-workspace-colors");
+      if (colors) {
+        const c = JSON.parse(colors);
+        if (c.pro) document.documentElement.style.setProperty("--accent", c.pro);
+      }
+    } catch { /* ignore */ }
+
     fetch("/api/objectives")
       .then((r) => r.ok ? r.json() : null)
       .then((data: Objective[] | null) => {
@@ -74,6 +82,14 @@ export default function DashboardPage() {
   function handleWorkspaceChange(w: Workspace) {
     setWorkspace(w);
     setTasks(mockData[w].tasks);
+    try {
+      const colors = localStorage.getItem("aria-workspace-colors");
+      if (colors) {
+        const c = JSON.parse(colors);
+        const accent = c[w];
+        if (accent) document.documentElement.style.setProperty("--accent", accent);
+      }
+    } catch { /* ignore */ }
   }
 
   function handleNavChange(nav: NavItem) {
@@ -81,6 +97,8 @@ export default function DashboardPage() {
     if (nav === "mails") router.push("/mails");
     else if (nav === "taches") router.push("/taches");
     else if (nav === "objectifs") router.push("/objectifs");
+    else if (nav === "notes") router.push("/notes");
+    else if (nav === "agenda") router.push("/agenda");
   }
 
   function handleToggle(id: string) {

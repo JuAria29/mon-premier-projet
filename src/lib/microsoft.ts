@@ -1,5 +1,5 @@
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import type { Mail, GraphTask, NotePageItem } from "@/types";
+import type { Mail, GraphTask, NotePageItem, MailFolder, CalendarEvent } from "@/types";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -34,7 +34,7 @@ async function refreshAccessToken(userId: string, refreshToken: string): Promise
         client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
         refresh_token: refreshToken,
         grant_type: "refresh_token",
-        scope: "User.Read Mail.Read Tasks.ReadWrite Notes.Read offline_access",
+        scope: "User.Read Mail.Read Mail.Send Mail.ReadWrite Calendars.Read Calendars.ReadWrite Tasks.ReadWrite Notes.Read offline_access",
       }),
     }
   );
@@ -77,7 +77,21 @@ async function graphRequest(token: string, method: string, path: string, body?: 
   });
 }
 
-export async function getEmails(userId: string, count = 20): Promise<Mail[]> {
+function mapMail(m: Record<string, unknown>): Mail {
+  const fromObj = m.from as { emailAddress?: { name?: string; address?: string } };
+  const bodyObj = m.body as { content?: string };
+  return {
+    id: m.id as string,
+    subject: (m.subject as string) || "(sans objet)",
+    from: fromObj?.emailAddress?.name || fromObj?.emailAddress?.address || "",
+    fromEmail: fromObj?.emailAddress?.address || "",
+    date: m.receivedDateTime as string,
+    body: bodyObj?.content || "",
+    preview: (m.bodyPreview as string) || "",
+  };
+}
+
+export async function getEmails(userId: string, count = 30): Promise<Mail[]> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");
 
@@ -86,19 +100,43 @@ export async function getEmails(userId: string, count = 20): Promise<Mail[]> {
     `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body`
   );
 
-  return (data.value ?? []).map((m: Record<string, unknown>) => {
-    const fromObj = m.from as { emailAddress?: { name?: string; address?: string } };
-    const bodyObj = m.body as { content?: string };
-    return {
-      id: m.id as string,
-      subject: (m.subject as string) || "(sans objet)",
-      from: fromObj?.emailAddress?.name || fromObj?.emailAddress?.address || "",
-      fromEmail: fromObj?.emailAddress?.address || "",
-      date: m.receivedDateTime as string,
-      body: bodyObj?.content || "",
-      preview: (m.bodyPreview as string) || "",
-    };
-  });
+  return (data.value ?? []).map(mapMail);
+}
+
+export async function getEmailsByFolder(userId: string, folderId: string, count = 30): Promise<Mail[]> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  const data = await graphFetch(
+    token,
+    `/me/mailFolders/${folderId}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body`
+  );
+
+  return (data.value ?? []).map(mapMail);
+}
+
+export async function getMailFolders(userId: string): Promise<MailFolder[]> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  const data = await graphFetch(
+    token,
+    "/me/mailFolders?$top=20&$select=id,displayName,unreadItemCount,totalItemCount"
+  );
+
+  return (data.value ?? []).map((f: Record<string, unknown>) => ({
+    id: f.id as string,
+    displayName: f.displayName as string,
+    unreadItemCount: (f.unreadItemCount as number) ?? 0,
+    totalItemCount: (f.totalItemCount as number) ?? 0,
+  }));
+}
+
+export async function moveMailToFolder(userId: string, messageId: string, folderId: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "PATCH", `/me/messages/${messageId}`, { parentFolderId: folderId });
+  if (!res.ok) throw new Error(`Move failed: ${res.status}`);
 }
 
 export async function getTasks(userId: string): Promise<GraphTask[]> {
@@ -109,10 +147,10 @@ export async function getTasks(userId: string): Promise<GraphTask[]> {
   const lists: { id: string; displayName: string }[] = listsData.value ?? [];
 
   const allTasks: GraphTask[] = [];
-  for (const list of lists.slice(0, 5)) {
+  for (const list of lists.slice(0, 10)) {
     const tasksData = await graphFetch(
       token,
-      `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=20`
+      `/me/todo/lists/${list.id}/tasks?$filter=status ne 'completed'&$top=50`
     );
     const tasks: GraphTask[] = (tasksData.value ?? []).map((t: Record<string, unknown>) => {
       const due = t.dueDateTime as { dateTime?: string } | undefined;
@@ -132,21 +170,67 @@ export async function getTasks(userId: string): Promise<GraphTask[]> {
   return allTasks;
 }
 
+export async function getTaskLists(userId: string): Promise<{ id: string; displayName: string }[]> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const data = await graphFetch(token, "/me/todo/lists");
+  return (data.value ?? []).map((l: Record<string, unknown>) => ({
+    id: l.id as string,
+    displayName: l.displayName as string,
+  }));
+}
+
+export async function createTask(userId: string, listId: string, title: string, dueDate?: string): Promise<GraphTask> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const body: Record<string, unknown> = { title, importance: "normal", status: "notStarted" };
+  if (dueDate) body.dueDateTime = { dateTime: dueDate, timeZone: "UTC" };
+  const res = await graphRequest(token, "POST", `/me/todo/lists/${listId}/tasks`, body);
+  if (!res.ok) throw new Error(`Create task failed: ${res.status}`);
+  const t = await res.json();
+  const due = t.dueDateTime as { dateTime?: string } | undefined;
+  return {
+    id: t.id as string,
+    title: t.title as string,
+    status: t.status as string,
+    importance: t.importance as string,
+    dueDateTime: due?.dateTime,
+    listId,
+  };
+}
+
+export async function deleteTask(userId: string, listId: string, taskId: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "DELETE", `/me/todo/lists/${listId}/tasks/${taskId}`);
+  if (!res.ok) throw new Error(`Delete task failed: ${res.status}`);
+}
+
+export async function updateTaskTitle(userId: string, listId: string, taskId: string, title: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "PATCH", `/me/todo/lists/${listId}/tasks/${taskId}`, { title });
+  if (!res.ok) throw new Error(`Update task failed: ${res.status}`);
+}
+
 export async function getNotePages(userId: string): Promise<NotePageItem[]> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");
 
   const data = await graphFetch(
     token,
-    "/me/onenote/pages?$top=10&$orderby=lastModifiedDateTime desc&$select=id,title,lastModifiedDateTime,contentUrl"
+    "/me/onenote/pages?$top=20&$orderby=lastModifiedDateTime desc&$select=id,title,lastModifiedDateTime,links"
   );
 
-  return (data.value ?? []).map((p: Record<string, unknown>) => ({
-    id: p.id as string,
-    title: (p.title as string) || "(sans titre)",
-    lastModifiedDateTime: p.lastModifiedDateTime as string,
-    contentUrl: p.contentUrl as string | undefined,
-  }));
+  return (data.value ?? []).map((p: Record<string, unknown>) => {
+    const links = p.links as { oneNoteWebUrl?: { href?: string } } | undefined;
+    return {
+      id: p.id as string,
+      title: (p.title as string) || "(sans titre)",
+      lastModifiedDateTime: p.lastModifiedDateTime as string,
+      webUrl: links?.oneNoteWebUrl?.href,
+    };
+  });
 }
 
 export async function completeTask(userId: string, listId: string, taskId: string): Promise<void> {
@@ -181,6 +265,62 @@ export async function sendNewMail(userId: string, to: string, subject: string, b
     },
   });
   if (!res.ok) throw new Error(`Send failed: ${res.status}`);
+}
+
+export async function getCalendarEvents(userId: string, from: string, to: string): Promise<CalendarEvent[]> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  const data = await graphFetch(
+    token,
+    `/me/calendarView?startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}&$top=50&$select=id,subject,start,end,location,isAllDay,bodyPreview,organizer&$orderby=start/dateTime`
+  );
+
+  return (data.value ?? []).map((e: Record<string, unknown>) => {
+    const startObj = e.start as { dateTime?: string } | undefined;
+    const endObj = e.end as { dateTime?: string } | undefined;
+    const locObj = e.location as { displayName?: string } | undefined;
+    const orgObj = e.organizer as { emailAddress?: { name?: string } } | undefined;
+    return {
+      id: e.id as string,
+      subject: (e.subject as string) || "(sans titre)",
+      start: startObj?.dateTime || "",
+      end: endObj?.dateTime || "",
+      location: locObj?.displayName || undefined,
+      isAllDay: (e.isAllDay as boolean) || false,
+      bodyPreview: (e.bodyPreview as string) || undefined,
+      organizer: orgObj?.emailAddress?.name || undefined,
+    };
+  });
+}
+
+export async function createCalendarEvent(
+  userId: string,
+  subject: string,
+  start: string,
+  end: string,
+  location?: string,
+  body?: string,
+): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const payload: Record<string, unknown> = {
+    subject,
+    start: { dateTime: start, timeZone: "Europe/Paris" },
+    end: { dateTime: end, timeZone: "Europe/Paris" },
+  };
+  if (location) payload.location = { displayName: location };
+  if (body) payload.body = { contentType: "Text", content: body };
+
+  const res = await graphRequest(token, "POST", "/me/events", payload);
+  if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
+}
+
+export async function deleteCalendarEvent(userId: string, eventId: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "DELETE", `/me/events/${eventId}`);
+  if (!res.ok) throw new Error(`Delete event failed: ${res.status}`);
 }
 
 export async function isMicrosoftConnected(userId: string): Promise<boolean> {
