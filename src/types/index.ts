@@ -67,6 +67,7 @@ export interface Mail {
   fromEmail: string;
   date: string;
   body: string;
+  bodyContentType: "html" | "text";
   preview: string;
 }
 

@@ -79,7 +79,7 @@ async function graphRequest(token: string, method: string, path: string, body?: 
 
 function mapMail(m: Record<string, unknown>): Mail {
   const fromObj = m.from as { emailAddress?: { name?: string; address?: string } };
-  const bodyObj = m.body as { content?: string };
+  const bodyObj = m.body as { content?: string; contentType?: string };
   return {
     id: m.id as string,
     subject: (m.subject as string) || "(sans objet)",
@@ -87,6 +87,7 @@ function mapMail(m: Record<string, unknown>): Mail {
     fromEmail: fromObj?.emailAddress?.address || "",
     date: m.receivedDateTime as string,
     body: bodyObj?.content || "",
+    bodyContentType: (bodyObj?.contentType?.toLowerCase() === "text" ? "text" : "html") as "html" | "text",
     preview: (m.bodyPreview as string) || "",
   };
 }

@@ -25,8 +25,34 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-function stripHtml(html: string) {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+function sanitizeHtml(html: string): string {
+  return html
+    // Remove script + style blocks entirely
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    // Strip inline event handlers
+    .replace(/\s+on\w+="[^"]*"/gi, "")
+    .replace(/\s+on\w+='[^']*'/gi, "")
+    // Open all links in new tab safely
+    .replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ');
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 const FOLDER_LABELS: Record<string, string> = {
@@ -452,11 +478,17 @@ export default function MailsPage() {
             </div>
 
             {/* Corps */}
-            <div className="card" style={{ padding: "14px 18px" }}>
-              <p style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.75, whiteSpace: "pre-wrap", margin: 0 }}>
-                {stripHtml(selected.body).slice(0, 4000)}
-                {selected.body.length > 4000 && "…"}
-              </p>
+            <div className="card" style={{ padding: "14px 18px", overflow: "hidden" }}>
+              {selected.bodyContentType === "html" ? (
+                <div
+                  className="mail-body"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selected.body) }}
+                />
+              ) : (
+                <p style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.75, whiteSpace: "pre-wrap", margin: 0, wordBreak: "break-word" }}>
+                  {htmlToPlainText(selected.body)}
+                </p>
+              )}
             </div>
 
             {/* Erreur analyse */}
