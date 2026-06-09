@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
 import type { AppSettings, Layout, Density } from "@/types";
 
@@ -26,11 +26,21 @@ const densityOptions: { id: Density; label: string; desc: string }[] = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <Suspense>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [ton, setTon] = useState<Ton>("direct");
   const [layout, setLayout] = useState<Layout>("equilibre");
   const [density, setDensity] = useState<Density>("regular");
   const [saved, setSaved] = useState(false);
+  const [msStatus, setMsStatus] = useState<"unknown" | "connected" | "error">("unknown");
 
   useEffect(() => {
     try {
@@ -44,13 +54,30 @@ export default function SettingsPage() {
     } catch {
       // ignore
     }
-  }, []);
+
+    const ms = searchParams.get("ms");
+    if (ms === "connected") setMsStatus("connected");
+    else if (ms === "error") setMsStatus("error");
+    else {
+      // Vérifier si connecté en testant l'API
+      fetch("/api/microsoft/mails")
+        .then((r) => {
+          if (r.status === 200) setMsStatus("connected");
+          else setMsStatus("unknown");
+        })
+        .catch(() => setMsStatus("unknown"));
+    }
+  }, [searchParams]);
 
   function save() {
     const settings: AppSettings = { ton, layout, density };
     localStorage.setItem("aria-settings", JSON.stringify(settings));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  function connectMicrosoft() {
+    window.location.href = "/api/microsoft/connect";
   }
 
   return (
@@ -71,6 +98,44 @@ export default function SettingsPage() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", margin: 0 }}>Personnalisation</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Adaptez Aria Coach à votre façon de travailler</p>
           </div>
+        </div>
+
+        {/* Connexions */}
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <p className="kicker" style={{ marginBottom: 16 }}>Connexions</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", borderRadius: 12, border: "1.5px solid var(--border)", background: "var(--surface)" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "#0078d4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon name="mail" size={18} style={{ color: "#fff" }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "var(--text)" }}>Microsoft 365</p>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+                {msStatus === "connected"
+                  ? "Connecté — Outlook, To Do, OneNote"
+                  : msStatus === "error"
+                  ? "Erreur de connexion"
+                  : "Non connecté"}
+              </p>
+            </div>
+            {msStatus === "connected" ? (
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--success) 12%, white)" }}>
+                ✓ Connecté
+              </span>
+            ) : (
+              <button
+                className="btn-primary"
+                onClick={connectMicrosoft}
+                style={{ fontSize: 13, padding: "8px 16px" }}
+              >
+                Connecter
+              </button>
+            )}
+          </div>
+          {msStatus === "error" && (
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--accent)" }}>
+              La connexion a échoué. Vérifiez vos paramètres Azure et réessayez.
+            </p>
+          )}
         </div>
 
         {/* Ton du coach */}

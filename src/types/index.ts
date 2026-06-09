@@ -50,3 +50,38 @@ export interface AppSettings {
   layout: Layout;
   density: Density;
 }
+
+export type ObjectiveLevel = "jour" | "semaine" | "mois" | "trimestre" | "an" | "5ans";
+
+export interface Objective {
+  id: string;
+  level: ObjectiveLevel;
+  texte: string;
+  pct: number;
+}
+
+export interface Mail {
+  id: string;
+  subject: string;
+  from: string;
+  fromEmail: string;
+  date: string;
+  body: string;
+  preview: string;
+}
+
+export interface GraphTask {
+  id: string;
+  title: string;
+  status: string;
+  importance: string;
+  dueDateTime?: string;
+  listName?: string;
+}
+
+export interface NotePageItem {
+  id: string;
+  title: string;
+  lastModifiedDateTime: string;
+  contentUrl?: string;
+}

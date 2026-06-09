@@ -13,9 +13,18 @@ import { HorizonStrip } from "@/components/dashboard/HorizonStrip";
 import { Debrief } from "@/components/dashboard/Debrief";
 import { CoachExchange } from "@/components/dashboard/CoachExchange";
 import { mockData } from "@/lib/mockData";
-import type { Session, Workspace, Layout, Density, Task, AppSettings } from "@/types";
+import type { Session, Workspace, Layout, Density, Task, AppSettings, Objective, ObjectiveLevel } from "@/types";
 
 type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda";
+
+const LEVEL_LABELS: Record<ObjectiveLevel, string> = {
+  jour: "Aujourd'hui",
+  semaine: "Cette semaine",
+  mois: "Ce mois",
+  trimestre: "Ce trimestre",
+  an: "Cette année",
+  "5ans": "Dans 5 ans",
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,6 +35,7 @@ export default function DashboardPage() {
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
   const [tasks, setTasks] = useState<Task[]>(mockData.pro.tasks);
   const [ton, setTon] = useState("Direct");
+  const [realHorizons, setRealHorizons] = useState<{ id: string; label: string; objectif: string; pct: number }[] | null>(null);
 
   useEffect(() => {
     try {
@@ -39,6 +49,22 @@ export default function DashboardPage() {
     } catch {
       // ignore
     }
+
+    fetch("/api/objectives")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: Objective[] | null) => {
+        if (!data || !Array.isArray(data) || data.length === 0) return;
+        const horizons = data
+          .filter((o) => o.texte)
+          .map((o) => ({
+            id: o.id,
+            label: LEVEL_LABELS[o.level] ?? o.level,
+            objectif: o.texte,
+            pct: o.pct,
+          }));
+        if (horizons.length > 0) setRealHorizons(horizons);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -48,6 +74,13 @@ export default function DashboardPage() {
   function handleWorkspaceChange(w: Workspace) {
     setWorkspace(w);
     setTasks(mockData[w].tasks);
+  }
+
+  function handleNavChange(nav: NavItem) {
+    setActiveNav(nav);
+    if (nav === "mails") router.push("/mails");
+    else if (nav === "taches") router.push("/taches");
+    else if (nav === "objectifs") router.push("/objectifs");
   }
 
   function handleToggle(id: string) {
@@ -63,6 +96,7 @@ export default function DashboardPage() {
 
   const data = mockData[workspace];
   const coachMessage = { ...data.coach[session], ton };
+  const horizons = realHorizons ?? data.horizons;
 
   const renderDashboard = () => {
     if (session === "soir") {
@@ -75,7 +109,7 @@ export default function DashboardPage() {
           </div>
           <Debrief tasks={tasks} demain={data.demain} />
           <CoachExchange workspace={workspace} ton={ton} />
-          <HorizonStrip horizons={data.horizons} />
+          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -88,7 +122,7 @@ export default function DashboardPage() {
           <DayPlan agenda={data.agenda} />
           <StatusCard tasks={tasks} session={session} />
           <TaskList tasks={tasks} onToggle={handleToggle} />
-          <HorizonStrip horizons={data.horizons} />
+          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -107,7 +141,7 @@ export default function DashboardPage() {
               <DayPlan agenda={data.agenda} />
             </div>
           </div>
-          <HorizonStrip horizons={data.horizons} />
+          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -121,7 +155,7 @@ export default function DashboardPage() {
           <TaskList tasks={tasks} onToggle={handleToggle} />
           <StatusCard tasks={tasks} session={session} />
         </div>
-        <HorizonStrip horizons={data.horizons} />
+        <HorizonStrip horizons={horizons} />
       </div>
     );
   };
@@ -132,7 +166,7 @@ export default function DashboardPage() {
         workspace={workspace}
         onWorkspaceChange={handleWorkspaceChange}
         activeNav={activeNav}
-        onNavChange={setActiveNav}
+        onNavChange={handleNavChange}
         userName="Julien Pasini"
         onSettingsOpen={() => router.push("/settings")}
       />
