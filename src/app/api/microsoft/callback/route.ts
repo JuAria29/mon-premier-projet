@@ -14,8 +14,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const origin = req.nextUrl.origin;
-  const redirectUri = `${origin}/api/microsoft/callback`;
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI ?? `${req.nextUrl.origin}/api/microsoft/callback`;
 
   const tokenRes = await fetch(
     `https://login.microsoftonline.com/common/oauth2/v2.0/token`,

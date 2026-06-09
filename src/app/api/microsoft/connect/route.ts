@@ -7,8 +7,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "MICROSOFT_CLIENT_ID manquant" }, { status: 500 });
   }
 
-  const origin = req.nextUrl.origin;
-  const redirectUri = `${origin}/api/microsoft/callback`;
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI ?? `${req.nextUrl.origin}/api/microsoft/callback`;
 
   const scopes = [
     "User.Read",
