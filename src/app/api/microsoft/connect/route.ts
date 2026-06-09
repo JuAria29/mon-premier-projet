@@ -1,9 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
-  const tenantId = process.env.MICROSOFT_TENANT_ID!;
-  const clientId = process.env.MICROSOFT_CLIENT_ID!;
-  const redirectUri = process.env.MICROSOFT_REDIRECT_URI!;
+export async function GET(req: NextRequest) {
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+
+  if (!clientId) {
+    return NextResponse.json({ error: "MICROSOFT_CLIENT_ID manquant" }, { status: 500 });
+  }
+
+  const origin = req.nextUrl.origin;
+  const redirectUri = `${origin}/api/microsoft/callback`;
 
   const scopes = [
     "User.Read",
@@ -21,6 +26,7 @@ export async function GET() {
     response_mode: "query",
   });
 
-  const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params}`;
+  // "common" = multi-tenant : accepte tout compte Microsoft (pro + perso)
+  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
   return NextResponse.redirect(authUrl);
 }

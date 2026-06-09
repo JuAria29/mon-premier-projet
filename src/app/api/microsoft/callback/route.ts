@@ -14,11 +14,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const tenantId = process.env.MICROSOFT_TENANT_ID!;
-  const redirectUri = process.env.MICROSOFT_REDIRECT_URI!;
+  const origin = req.nextUrl.origin;
+  const redirectUri = `${origin}/api/microsoft/callback`;
 
   const tokenRes = await fetch(
-    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    `https://login.microsoftonline.com/common/oauth2/v2.0/token`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
