@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  --bg: oklch(0.985 0.005 75);
+  --surface: #ffffff;
+  --surface-2: oklch(0.972 0.006 75);
+  --surface-3: oklch(0.955 0.008 75);
+  --accent: #b5612f;
+  --accent-strong: color-mix(in oklch, #b5612f 80%, black);
+  --accent-soft: color-mix(in oklch, #b5612f 12%, white);
+  --border: oklch(0.918 0.006 70);
+  --border-strong: oklch(0.86 0.008 65);
+  --text: oklch(0.28 0.014 60);
+  --text-soft: oklch(0.37 0.012 60);
+  --text-muted: oklch(0.545 0.012 60);
+  --text-faint: oklch(0.66 0.012 60);
+  --success: oklch(0.55 0.085 155);
+  --success-soft: oklch(0.92 0.04 155);
+  --info: oklch(0.52 0.085 245);
+  --info-soft: oklch(0.92 0.04 245);
+  --violet: oklch(0.52 0.1 295);
+  --violet-soft: oklch(0.92 0.04 295);
+  --gap: 18px;
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --shadow: 0 1px 4px rgba(40, 30, 20, 0.07), 0 4px 16px rgba(40, 30, 20, 0.05);
+  --shadow-hover: 0 2px 8px rgba(40, 30, 20, 0.1), 0 8px 24px rgba(40, 30, 20, 0.08);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-soft: var(--text-soft);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --font-sans: var(--font-jakarta);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.coach-card {
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 60%);
+  border: 1px solid color-mix(in oklch, var(--accent) 20%, var(--border));
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 11px 20px;
+  border-radius: var(--radius-btn);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.btn-primary:hover {
+  background: var(--accent-strong);
+  box-shadow: 0 2px 8px rgba(181, 97, 47, 0.35);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 9px 16px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}

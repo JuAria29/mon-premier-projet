@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//private/tmp/**)",
+      "Bash(npx create-next-app@latest aria-coach-init --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git --yes)"
+    ]
+  }
+}
