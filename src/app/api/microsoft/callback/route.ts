@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 
-const USER_ID = "julien";
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state") || "pro";
+  const workspace = state === "perso" ? "perso" : "pro";
+  const USER_ID = `julien-${workspace}`;
 
   if (error || !code) {
     return NextResponse.redirect(
-      new URL("/settings?ms=error", req.url)
+      new URL(`/settings?ms=error&workspace=${workspace}`, req.url)
     );
   }
 
@@ -49,5 +50,5 @@ export async function GET(req: NextRequest) {
     updated_at: new Date().toISOString(),
   });
 
-  return NextResponse.redirect(new URL("/settings?ms=connected", req.url));
+  return NextResponse.redirect(new URL(`/settings?ms=connected&workspace=${workspace}`, req.url));
 }

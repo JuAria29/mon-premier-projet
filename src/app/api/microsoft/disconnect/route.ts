@@ -1,15 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 
-const USER_ID = "julien";
-
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const workspace = new URL(req.url).searchParams.get("workspace") || "pro";
+    const userId = `julien-${workspace}`;
     const supabase = createSupabaseServiceClient();
     const { error } = await supabase
       .from("microsoft_tokens")
       .delete()
-      .eq("user_id", USER_ID);
+      .eq("user_id", userId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

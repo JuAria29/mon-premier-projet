@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "MICROSOFT_CLIENT_ID manquant" }, { status: 500 });
   }
 
+  const workspace = new URL(req.url).searchParams.get("workspace") || "pro";
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI ?? `${req.nextUrl.origin}/api/microsoft/callback`;
 
   const scopes = [
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
     redirect_uri: redirectUri,
     scope: scopes,
     response_mode: "query",
+    state: workspace,
   });
 
   // "common" = multi-tenant : accepte tout compte Microsoft (pro + perso)

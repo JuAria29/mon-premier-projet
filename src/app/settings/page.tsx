@@ -42,6 +42,57 @@ const WORKSPACE_COLORS = [
   { label: "Teal", value: "#0d9488" },
 ];
 
+type ConnectStatus = "loading" | "connected" | "unknown" | "error";
+
+function ConnectionCard({
+  label,
+  description,
+  status,
+  disconnecting,
+  onConnect,
+  onDisconnect,
+}: {
+  label: string;
+  description: string;
+  status: ConnectStatus;
+  disconnecting: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", borderRadius: 12, border: "1.5px solid var(--border)", background: "var(--surface)" }}>
+      <div style={{ width: 36, height: 36, borderRadius: 8, background: "#0078d4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon name="mail" size={18} style={{ color: "#fff" }} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "var(--text)" }}>{label}</p>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>{description}</p>
+      </div>
+      {status === "loading" ? (
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Vérification…</span>
+      ) : status === "connected" ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--success) 12%, white)" }}>
+            ✓ Connecté
+          </span>
+          <button
+            className="btn-ghost"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+            style={{ fontSize: 12, padding: "6px 12px", color: "var(--accent)" }}
+          >
+            {disconnecting ? "Déconnexion…" : "Déconnecter"}
+          </button>
+        </div>
+      ) : (
+        <button className="btn-primary" onClick={onConnect} style={{ fontSize: 13, padding: "8px 16px" }}>
+          Connecter
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,8 +100,12 @@ function SettingsContent() {
   const [layout, setLayout] = useState<Layout>("equilibre");
   const [density, setDensity] = useState<Density>("regular");
   const [saved, setSaved] = useState(false);
-  const [msStatus, setMsStatus] = useState<"unknown" | "connected" | "error">("unknown");
-  const [disconnecting, setDisconnecting] = useState(false);
+
+  const [msStatusPro, setMsStatusPro] = useState<ConnectStatus>("loading");
+  const [msStatusPerso, setMsStatusPerso] = useState<ConnectStatus>("loading");
+  const [disconnectingPro, setDisconnectingPro] = useState(false);
+  const [disconnectingPerso, setDisconnectingPerso] = useState(false);
+
   const [colorPro, setColorPro] = useState("#b5612f");
   const [colorPerso, setColorPerso] = useState("#2563eb");
 
@@ -73,19 +128,38 @@ function SettingsContent() {
       // ignore
     }
 
+    // Handle OAuth callback result
     const ms = searchParams.get("ms");
-    if (ms === "connected") setMsStatus("connected");
-    else if (ms === "error") setMsStatus("error");
-    else {
-      // Vérifier si connecté en testant l'API
-      fetch("/api/microsoft/mails")
-        .then((r) => {
-          if (r.status === 200) setMsStatus("connected");
-          else setMsStatus("unknown");
-        })
-        .catch(() => setMsStatus("unknown"));
+    const callbackWorkspace = searchParams.get("workspace") || "pro";
+
+    if (ms === "connected") {
+      if (callbackWorkspace === "perso") setMsStatusPerso("connected");
+      else setMsStatusPro("connected");
+    } else if (ms === "error") {
+      if (callbackWorkspace === "perso") setMsStatusPerso("error");
+      else setMsStatusPro("error");
     }
-  }, [searchParams]);
+
+    // Check both workspaces
+    checkStatus("pro");
+    checkStatus("perso");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function checkStatus(workspace: "pro" | "perso") {
+    const setter = workspace === "pro" ? setMsStatusPro : setMsStatusPerso;
+    try {
+      const r = await fetch(`/api/microsoft/status?workspace=${workspace}`);
+      if (r.ok) {
+        const { connected } = await r.json();
+        setter(connected ? "connected" : "unknown");
+      } else {
+        setter("unknown");
+      }
+    } catch {
+      setter("unknown");
+    }
+  }
 
   function save() {
     const settings: AppSettings = { ton, layout, density };
@@ -95,18 +169,21 @@ function SettingsContent() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function connectMicrosoft() {
-    window.location.href = "/api/microsoft/connect";
+  function connectMicrosoft(workspace: "pro" | "perso") {
+    window.location.href = `/api/microsoft/connect?workspace=${workspace}`;
   }
 
-  async function disconnectMicrosoft() {
-    if (!confirm("Déconnecter le compte Microsoft 365 ? Vous devrez vous reconnecter pour accéder aux mails, tâches et agenda.")) return;
-    setDisconnecting(true);
+  async function disconnectMicrosoft(workspace: "pro" | "perso") {
+    const label = workspace === "pro" ? "Pro" : "Perso";
+    if (!confirm(`Déconnecter le compte Microsoft 365 de l'espace ${label} ?`)) return;
+    const setter = workspace === "pro" ? setDisconnectingPro : setDisconnectingPerso;
+    const statusSetter = workspace === "pro" ? setMsStatusPro : setMsStatusPerso;
+    setter(true);
     try {
-      const res = await fetch("/api/microsoft/disconnect", { method: "POST" });
-      if (res.ok) setMsStatus("unknown");
+      const res = await fetch(`/api/microsoft/disconnect?workspace=${workspace}`, { method: "POST" });
+      if (res.ok) statusSetter("unknown");
     } finally {
-      setDisconnecting(false);
+      setter(false);
     }
   }
 
@@ -132,50 +209,33 @@ function SettingsContent() {
 
         {/* Connexions */}
         <div className="card" style={{ padding: "20px 24px" }}>
-          <p className="kicker" style={{ marginBottom: 16 }}>Connexions</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", borderRadius: 12, border: "1.5px solid var(--border)", background: "var(--surface)" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "#0078d4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Icon name="mail" size={18} style={{ color: "#fff" }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "var(--text)" }}>Microsoft 365</p>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
-                {msStatus === "connected"
-                  ? "Connecté — Outlook, To Do, OneNote"
-                  : msStatus === "error"
-                  ? "Erreur de connexion"
-                  : "Non connecté"}
-              </p>
-            </div>
-            {msStatus === "connected" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--success) 12%, white)" }}>
-                  ✓ Connecté
-                </span>
-                <button
-                  className="btn-ghost"
-                  onClick={disconnectMicrosoft}
-                  disabled={disconnecting}
-                  style={{ fontSize: 12, padding: "6px 12px", color: "var(--accent)" }}
-                >
-                  {disconnecting ? "Déconnexion…" : "Déconnecter"}
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn-primary"
-                onClick={connectMicrosoft}
-                style={{ fontSize: 13, padding: "8px 16px" }}
-              >
-                Connecter
-              </button>
-            )}
+          <p className="kicker" style={{ marginBottom: 16 }}>Connexions Microsoft 365</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <ConnectionCard
+              label="Espace Pro"
+              description={msStatusPro === "connected" ? "Outlook, To Do, OneNote, Calendrier" : "Non connecté"}
+              status={msStatusPro}
+              disconnecting={disconnectingPro}
+              onConnect={() => connectMicrosoft("pro")}
+              onDisconnect={() => disconnectMicrosoft("pro")}
+            />
+            <ConnectionCard
+              label="Espace Perso"
+              description={msStatusPerso === "connected" ? "Outlook, To Do, OneNote, Calendrier" : "Non connecté"}
+              status={msStatusPerso}
+              disconnecting={disconnectingPerso}
+              onConnect={() => connectMicrosoft("perso")}
+              onDisconnect={() => disconnectMicrosoft("perso")}
+            />
           </div>
-          {msStatus === "error" && (
-            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--accent)" }}>
+          {(msStatusPro === "error" || msStatusPerso === "error") && (
+            <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--accent)" }}>
               La connexion a échoué. Vérifiez vos paramètres Azure et réessayez.
             </p>
           )}
+          <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
+            Chaque espace peut être connecté à un compte Microsoft différent.
+          </p>
         </div>
 
         {/* Ton du coach */}

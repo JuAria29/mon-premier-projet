@@ -45,9 +45,13 @@ export default function TachesPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
   const [adding, setAdding] = useState(false);
+  const [workspace, setWorkspace] = useState<"pro" | "perso">("pro");
 
   useEffect(() => {
-    fetch("/api/microsoft/tasks")
+    const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? "pro";
+    setWorkspace(ws);
+
+    fetch(`/api/microsoft/tasks?workspace=${ws}`)
       .then(async (r) => {
         if (r.status === 401) { setNotConnected(true); return; }
         const data = await r.json();
@@ -55,7 +59,7 @@ export default function TachesPage() {
       })
       .finally(() => setLoadingTasks(false));
 
-    fetch("/api/microsoft/tasks?lists=1")
+    fetch(`/api/microsoft/tasks?workspace=${ws}&lists=1`)
       .then(async (r) => {
         if (!r.ok) return;
         const data = await r.json();
@@ -67,7 +71,7 @@ export default function TachesPage() {
     if (!task.listId || completing.has(task.id) || completed.has(task.id)) return;
     setCompleting((prev) => new Set(prev).add(task.id));
     try {
-      const res = await fetch("/api/microsoft/tasks", {
+      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listId: task.listId, taskId: task.id, action: "complete" }),
@@ -89,7 +93,7 @@ export default function TachesPage() {
     if (!confirm(`Supprimer "${task.title}" ?`)) return;
     setDeleting((prev) => new Set(prev).add(task.id));
     try {
-      const res = await fetch("/api/microsoft/tasks", {
+      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listId: task.listId, taskId: task.id }),
@@ -103,7 +107,7 @@ export default function TachesPage() {
   async function saveRename(task: GraphTask) {
     if (!task.listId || !editTitle.trim()) { setEditingId(null); return; }
     try {
-      const res = await fetch("/api/microsoft/tasks", {
+      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listId: task.listId, taskId: task.id, action: "rename", title: editTitle }),
@@ -118,7 +122,7 @@ export default function TachesPage() {
     if (!newTitle.trim()) return;
     setAdding(true);
     try {
-      const res = await fetch("/api/microsoft/tasks", {
+      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listId, title: newTitle, dueDate: newDue || undefined }),

@@ -13,7 +13,8 @@ export default function NotesPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch("/api/microsoft/notes")
+    const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? "pro";
+    fetch(`/api/microsoft/notes?workspace=${ws}`)
       .then(async (r) => {
         if (r.status === 401) { setNotConnected(true); return; }
         const data = await r.json();

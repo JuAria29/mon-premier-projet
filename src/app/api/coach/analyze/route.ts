@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getEmails } from "@/lib/microsoft";
 import { analyzeMail } from "@/lib/claude";
 
-const USER_ID = "julien";
-
 export async function POST(req: NextRequest) {
   try {
-    const { mailId, ton = "direct" } = await req.json();
+    const { mailId, ton = "direct", workspace = "pro" } = await req.json();
+    const USER_ID = `julien-${workspace}`;
     if (!mailId) {
       return NextResponse.json({ error: "mailId requis" }, { status: 400 });
     }

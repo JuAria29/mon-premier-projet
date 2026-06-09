@@ -1,11 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getNotePages } from "@/lib/microsoft";
 
-const USER_ID = "julien";
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const pages = await getNotePages(USER_ID);
+    const workspace = new URL(req.url).searchParams.get("workspace") || "pro";
+    const pages = await getNotePages(`julien-${workspace}`);
     return NextResponse.json(pages);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

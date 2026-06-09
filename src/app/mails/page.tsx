@@ -57,6 +57,8 @@ export default function MailsPage() {
   const [copied, setCopied] = useState(false);
   const [ton, setTon] = useState("direct");
 
+  const [workspace, setWorkspace] = useState<"pro" | "perso">("pro");
+
   const [replying, setReplying] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
@@ -75,6 +77,9 @@ export default function MailsPage() {
   const [newError, setNewError] = useState<string | null>(null);
 
   useEffect(() => {
+    const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? "pro";
+    setWorkspace(ws);
+
     try {
       const s = localStorage.getItem("aria-settings");
       if (s) {
@@ -83,7 +88,7 @@ export default function MailsPage() {
       }
     } catch { /* ignore */ }
 
-    fetch("/api/microsoft/folders")
+    fetch(`/api/microsoft/folders?workspace=${ws}`)
       .then(async (r) => {
         if (r.status === 401) { setNotConnected(true); return; }
         const data = await r.json();
@@ -118,7 +123,10 @@ export default function MailsPage() {
     setLoading(true);
     setSelected(null);
     setAnalysis(null);
-    const url = folderId ? `/api/microsoft/mails?folder=${encodeURIComponent(folderId)}` : "/api/microsoft/mails";
+    const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? workspace;
+    const url = folderId
+      ? `/api/microsoft/mails?workspace=${ws}&folder=${encodeURIComponent(folderId)}`
+      : `/api/microsoft/mails?workspace=${ws}`;
     fetch(url)
       .then(async (r) => {
         if (r.status === 401) { setNotConnected(true); return; }
@@ -137,7 +145,7 @@ export default function MailsPage() {
       const res = await fetch("/api/coach/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mailId: selected.id, ton }),
+        body: JSON.stringify({ mailId: selected.id, ton, workspace }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -165,7 +173,7 @@ export default function MailsPage() {
     setSendingReply(true);
     setReplyError(null);
     try {
-      const res = await fetch("/api/microsoft/mails", {
+      const res = await fetch(`/api/microsoft/mails?workspace=${workspace}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reply", messageId: selected.id, comment: replyText }),
@@ -188,7 +196,7 @@ export default function MailsPage() {
     if (!confirm(`Supprimer le mail de "${selected.from}" ?`)) return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/microsoft/mails", {
+      const res = await fetch(`/api/microsoft/mails?workspace=${workspace}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId: selected.id }),
@@ -207,7 +215,7 @@ export default function MailsPage() {
     if (!selected) return;
     setShowMoveMenu(false);
     try {
-      const res = await fetch("/api/microsoft/mails", {
+      const res = await fetch(`/api/microsoft/mails?workspace=${workspace}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId: selected.id, folderId }),
@@ -225,7 +233,7 @@ export default function MailsPage() {
     setSendingNew(true);
     setNewError(null);
     try {
-      const res = await fetch("/api/microsoft/mails", {
+      const res = await fetch(`/api/microsoft/mails?workspace=${workspace}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "new", to: compose.to, subject: compose.subject, content: compose.content }),

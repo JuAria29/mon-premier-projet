@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEmails, getEmailsByFolder, deleteMail, sendReply, sendNewMail, moveMailToFolder } from "@/lib/microsoft";
 
-const USER_ID = "julien";
+function getUserKey(req: NextRequest) {
+  const workspace = new URL(req.url).searchParams.get("workspace") || "pro";
+  return `julien-${workspace}`;
+}
 
 function errResponse(err: unknown) {
   const message = err instanceof Error ? err.message : "Erreur inconnue";
@@ -14,8 +17,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const folder = searchParams.get("folder");
     const mails = folder
-      ? await getEmailsByFolder(USER_ID, folder)
-      : await getEmails(USER_ID, 30);
+      ? await getEmailsByFolder(getUserKey(req), folder)
+      : await getEmails(getUserKey(req), 30);
     return NextResponse.json(mails);
   } catch (err) {
     return errResponse(err);
@@ -26,7 +29,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const { messageId, folderId } = await req.json();
     if (!messageId || !folderId) return NextResponse.json({ error: "messageId et folderId requis" }, { status: 400 });
-    await moveMailToFolder(USER_ID, messageId, folderId);
+    await moveMailToFolder(getUserKey(req), messageId, folderId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errResponse(err);
@@ -37,7 +40,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const { messageId } = await req.json();
     if (!messageId) return NextResponse.json({ error: "messageId requis" }, { status: 400 });
-    await deleteMail(USER_ID, messageId);
+    await deleteMail(getUserKey(req), messageId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errResponse(err);
@@ -51,13 +54,13 @@ export async function POST(req: NextRequest) {
 
     if (action === "reply") {
       if (!messageId || !comment) return NextResponse.json({ error: "messageId et comment requis" }, { status: 400 });
-      await sendReply(USER_ID, messageId, comment);
+      await sendReply(getUserKey(req), messageId, comment);
       return NextResponse.json({ ok: true });
     }
 
     if (action === "new") {
       if (!to || !subject || !content) return NextResponse.json({ error: "to, subject, content requis" }, { status: 400 });
-      await sendNewMail(USER_ID, to, subject, content);
+      await sendNewMail(getUserKey(req), to, subject, content);
       return NextResponse.json({ ok: true });
     }
 

@@ -37,6 +37,27 @@ export default function DashboardPage() {
   const [ton, setTon] = useState("Direct");
   const [realHorizons, setRealHorizons] = useState<{ id: string; label: string; objectif: string; pct: number }[] | null>(null);
 
+  function fetchObjectives(ws: Workspace) {
+    fetch(`/api/objectives?workspace=${ws}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: Objective[] | null) => {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          setRealHorizons(null);
+          return;
+        }
+        const horizons = data
+          .filter((o) => o.texte)
+          .map((o) => ({
+            id: o.id,
+            label: LEVEL_LABELS[o.level] ?? o.level,
+            objectif: o.texte,
+            pct: o.pct,
+          }));
+        setRealHorizons(horizons.length > 0 ? horizons : null);
+      })
+      .catch(() => {});
+  }
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem("aria-settings");
@@ -51,28 +72,22 @@ export default function DashboardPage() {
     }
 
     try {
+      const savedWorkspace = localStorage.getItem("aria-active-workspace") as Workspace | null;
+      const ws = (savedWorkspace === "perso" ? "perso" : "pro") as Workspace;
+      setWorkspace(ws);
+      setTasks(mockData[ws].tasks);
+
       const colors = localStorage.getItem("aria-workspace-colors");
       if (colors) {
         const c = JSON.parse(colors);
-        if (c.pro) document.documentElement.style.setProperty("--accent", c.pro);
+        const accent = c[ws];
+        if (accent) document.documentElement.style.setProperty("--accent", accent);
       }
     } catch { /* ignore */ }
 
-    fetch("/api/objectives")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data: Objective[] | null) => {
-        if (!data || !Array.isArray(data) || data.length === 0) return;
-        const horizons = data
-          .filter((o) => o.texte)
-          .map((o) => ({
-            id: o.id,
-            label: LEVEL_LABELS[o.level] ?? o.level,
-            objectif: o.texte,
-            pct: o.pct,
-          }));
-        if (horizons.length > 0) setRealHorizons(horizons);
-      })
-      .catch(() => {});
+    const ws = (localStorage.getItem("aria-active-workspace") as Workspace | null) ?? "pro";
+    fetchObjectives(ws === "perso" ? "perso" : "pro");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -82,7 +97,9 @@ export default function DashboardPage() {
   function handleWorkspaceChange(w: Workspace) {
     setWorkspace(w);
     setTasks(mockData[w].tasks);
+    setRealHorizons(null);
     try {
+      localStorage.setItem("aria-active-workspace", w);
       const colors = localStorage.getItem("aria-workspace-colors");
       if (colors) {
         const c = JSON.parse(colors);
@@ -90,6 +107,7 @@ export default function DashboardPage() {
         if (accent) document.documentElement.style.setProperty("--accent", accent);
       }
     } catch { /* ignore */ }
+    fetchObjectives(w);
   }
 
   function handleNavChange(nav: NavItem) {

@@ -140,10 +140,13 @@ export default function AgendaPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [workspace, setWorkspace] = useState<"pro" | "perso">("pro");
 
   // Load calendars once
   useEffect(() => {
-    fetch("/api/microsoft/calendar?calendars=1")
+    const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? "pro";
+    setWorkspace(ws);
+    fetch(`/api/microsoft/calendar?workspace=${ws}&calendars=1`)
       .then(async (r) => {
         if (r.status === 401) { setNotConnected(true); return; }
         const data = await r.json();
@@ -154,7 +157,7 @@ export default function AgendaPage() {
       });
   }, []);
 
-  const fetchEvents = useCallback((date: Date, viewMode: ViewMode, calIds: Set<string>) => {
+  const fetchEvents = useCallback((date: Date, viewMode: ViewMode, calIds: Set<string>, ws?: string) => {
     setLoading(true);
     let from: Date;
     let to: Date;
@@ -176,7 +179,8 @@ export default function AgendaPage() {
     }
 
     const calendarIds = calIds.size > 0 ? Array.from(calIds).join(",") : "";
-    const url = `/api/microsoft/calendar?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${calendarIds ? `&calendarIds=${encodeURIComponent(calendarIds)}` : ""}`;
+    const activeWs = ws || (localStorage.getItem("aria-active-workspace") as "pro" | "perso") || "pro";
+    const url = `/api/microsoft/calendar?workspace=${activeWs}&from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${calendarIds ? `&calendarIds=${encodeURIComponent(calendarIds)}` : ""}`;
 
     fetch(url)
       .then(async (r) => {
@@ -216,7 +220,7 @@ export default function AgendaPage() {
     if (!confirm("Supprimer cet événement ?")) return;
     setDeleting((prev) => new Set(prev).add(eventId));
     try {
-      const res = await fetch("/api/microsoft/calendar", {
+      const res = await fetch(`/api/microsoft/calendar?workspace=${workspace}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId }),
@@ -232,7 +236,7 @@ export default function AgendaPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await fetch("/api/microsoft/calendar", {
+      const res = await fetch(`/api/microsoft/calendar?workspace=${workspace}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, calendarId: form.calendarId || undefined }),
