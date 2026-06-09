@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
   );
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(new URL("/settings?ms=error", req.url));
+    const errBody = await tokenRes.json().catch(() => ({}));
+    const errMsg = encodeURIComponent(JSON.stringify(errBody));
+    return NextResponse.redirect(new URL(`/settings?ms=error&detail=${errMsg}`, req.url));
   }
 
   const tokens = await tokenRes.json();
