@@ -50,6 +50,7 @@ function SettingsContent() {
   const [density, setDensity] = useState<Density>("regular");
   const [saved, setSaved] = useState(false);
   const [msStatus, setMsStatus] = useState<"unknown" | "connected" | "error">("unknown");
+  const [disconnecting, setDisconnecting] = useState(false);
   const [colorPro, setColorPro] = useState("#b5612f");
   const [colorPerso, setColorPerso] = useState("#2563eb");
 
@@ -98,6 +99,17 @@ function SettingsContent() {
     window.location.href = "/api/microsoft/connect";
   }
 
+  async function disconnectMicrosoft() {
+    if (!confirm("Déconnecter le compte Microsoft 365 ? Vous devrez vous reconnecter pour accéder aux mails, tâches et agenda.")) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/microsoft/disconnect", { method: "POST" });
+      if (res.ok) setMsStatus("unknown");
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "32px 24px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
@@ -136,9 +148,19 @@ function SettingsContent() {
               </p>
             </div>
             {msStatus === "connected" ? (
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--success) 12%, white)" }}>
-                ✓ Connecté
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--success)", padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--success) 12%, white)" }}>
+                  ✓ Connecté
+                </span>
+                <button
+                  className="btn-ghost"
+                  onClick={disconnectMicrosoft}
+                  disabled={disconnecting}
+                  style={{ fontSize: 12, padding: "6px 12px", color: "var(--accent)" }}
+                >
+                  {disconnecting ? "Déconnexion…" : "Déconnecter"}
+                </button>
+              </div>
             ) : (
               <button
                 className="btn-primary"
