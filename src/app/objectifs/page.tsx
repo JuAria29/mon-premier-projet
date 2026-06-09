@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
 import type { Objective, ObjectiveLevel } from "@/types";
@@ -30,6 +30,7 @@ export default function ObjectifsPage() {
       ) as Record<ObjectiveLevel, ObjectiveState>
   );
   const [loading, setLoading] = useState(true);
+  const [savedAll, setSavedAll] = useState(false);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
@@ -67,6 +68,17 @@ export default function ObjectifsPage() {
     }
   }, []);
 
+  const isSaving = useMemo(() => Object.values(objectives).some((o) => o.saving), [objectives]);
+
+  async function saveAll() {
+    setSavedAll(false);
+    await Promise.all(
+      LEVELS.map(({ id }) => save(id, objectives[id].texte, objectives[id].pct))
+    );
+    setSavedAll(true);
+    setTimeout(() => setSavedAll(false), 2000);
+  }
+
   function handleChange(level: ObjectiveLevel, field: "texte" | "pct", value: string | number) {
     setObjectives((prev) => {
       const updated = { ...prev[level], [field]: value };
@@ -103,6 +115,23 @@ export default function ObjectifsPage() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", margin: 0 }}>Objectifs</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Vos horizons du quotidien au long terme</p>
           </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn-primary"
+            onClick={saveAll}
+            disabled={isSaving}
+            style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 160, justifyContent: "center" }}
+          >
+            {savedAll ? (
+              <><Icon name="check" size={15} /> Enregistré !</>
+            ) : isSaving ? (
+              "Enregistrement…"
+            ) : (
+              "Enregistrer tout"
+            )}
+          </button>
         </div>
 
         {LEVELS.map(({ id, label, icon }) => {

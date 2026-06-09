@@ -19,8 +19,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { level, texte, pct = 0 } = body;
 
-  if (!level || !texte) {
-    return NextResponse.json({ error: "level et texte requis" }, { status: 400 });
+  if (!level) {
+    return NextResponse.json({ error: "level requis" }, { status: 400 });
   }
 
   const supabase = createSupabaseServiceClient();
