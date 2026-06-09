@@ -29,6 +29,8 @@ export default function TachesPage() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [notConnected, setNotConnected] = useState(false);
+  const [completing, setCompleting] = useState<Set<string>>(new Set());
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch("/api/microsoft/tasks")
@@ -47,6 +49,27 @@ export default function TachesPage() {
       })
       .finally(() => setLoadingNotes(false));
   }, []);
+
+  async function completeTask(task: GraphTask) {
+    if (!task.listId || completing.has(task.id) || completed.has(task.id)) return;
+    setCompleting((prev) => new Set(prev).add(task.id));
+    try {
+      const res = await fetch("/api/microsoft/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listId: task.listId, taskId: task.id }),
+      });
+      if (res.ok) {
+        setCompleted((prev) => new Set(prev).add(task.id));
+        setTimeout(() => {
+          setTasks((prev) => prev.filter((t) => t.id !== task.id));
+          setCompleted((prev) => { const s = new Set(prev); s.delete(task.id); return s; });
+        }, 800);
+      }
+    } finally {
+      setCompleting((prev) => { const s = new Set(prev); s.delete(task.id); return s; });
+    }
+  }
 
   if (notConnected) {
     return (
@@ -104,30 +127,45 @@ export default function TachesPage() {
                 <div key={listName} className="card" style={{ padding: "16px 20px" }}>
                   <p className="kicker" style={{ marginBottom: 10 }}>{listName}</p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {listTasks.map((task) => (
-                      <div key={task.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: "2px solid var(--border)", flexShrink: 0, marginTop: 1 }} />
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{task.title}</p>
-                          {task.dueDateTime && (
-                            <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
-                              Échéance : {formatDue(task.dueDateTime)}
-                            </p>
-                          )}
+                    {listTasks.map((task) => {
+                      const isDone = completed.has(task.id);
+                      const isCompleting = completing.has(task.id);
+                      return (
+                        <div key={task.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)", opacity: isDone ? 0.5 : 1, transition: "opacity 0.3s" }}>
+                          <button
+                            onClick={() => completeTask(task)}
+                            disabled={isDone || isCompleting}
+                            style={{
+                              width: 18, height: 18, borderRadius: 5,
+                              border: `2px solid ${isDone ? "var(--success)" : "var(--border)"}`,
+                              background: isDone ? "var(--success)" : "transparent",
+                              flexShrink: 0, marginTop: 1, cursor: isDone ? "default" : "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.2s",
+                            }}
+                          >
+                            {isDone && <span style={{ color: "white", fontSize: 10, lineHeight: 1 }}>✓</span>}
+                          </button>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: 0, fontSize: 14, color: "var(--text)", fontWeight: 500, textDecoration: isDone ? "line-through" : "none" }}>{task.title}</p>
+                            {task.dueDateTime && (
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
+                                Échéance : {formatDue(task.dueDateTime)}
+                              </p>
+                            )}
+                          </div>
+                          <span style={{
+                            fontSize: 11, fontWeight: 600,
+                            color: importanceColor(task.importance),
+                            padding: "2px 8px", borderRadius: 999,
+                            background: task.importance === "high" ? "var(--accent-soft)" : "var(--surface-2)",
+                            flexShrink: 0,
+                          }}>
+                            {importanceLabel(task.importance)}
+                          </span>
                         </div>
-                        <span style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: importanceColor(task.importance),
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          background: task.importance === "high" ? "var(--accent-soft)" : "var(--surface-2)",
-                          flexShrink: 0,
-                        }}>
-                          {importanceLabel(task.importance)}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}

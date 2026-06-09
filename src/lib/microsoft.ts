@@ -67,6 +67,16 @@ async function graphFetch(token: string, path: string) {
   return res.json();
 }
 
+async function graphRequest(token: string, method: string, path: string, body?: unknown): Promise<Response> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  return fetch(`${GRAPH_BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
 export async function getEmails(userId: string, count = 20): Promise<Mail[]> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");
@@ -113,6 +123,7 @@ export async function getTasks(userId: string): Promise<GraphTask[]> {
         importance: t.importance as string,
         dueDateTime: due?.dateTime,
         listName: list.displayName,
+        listId: list.id,
       };
     });
     allTasks.push(...tasks);
@@ -136,6 +147,40 @@ export async function getNotePages(userId: string): Promise<NotePageItem[]> {
     lastModifiedDateTime: p.lastModifiedDateTime as string,
     contentUrl: p.contentUrl as string | undefined,
   }));
+}
+
+export async function completeTask(userId: string, listId: string, taskId: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "PATCH", `/me/todo/lists/${listId}/tasks/${taskId}`, { status: "completed" });
+  if (!res.ok) throw new Error(`Graph API error ${res.status}`);
+}
+
+export async function sendReply(userId: string, messageId: string, comment: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "POST", `/me/messages/${messageId}/reply`, { comment });
+  if (!res.ok) throw new Error(`Reply failed: ${res.status}`);
+}
+
+export async function deleteMail(userId: string, messageId: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "DELETE", `/me/messages/${messageId}`);
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+}
+
+export async function sendNewMail(userId: string, to: string, subject: string, body: string): Promise<void> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+  const res = await graphRequest(token, "POST", `/me/sendMail`, {
+    message: {
+      subject,
+      body: { contentType: "Text", content: body },
+      toRecipients: [{ emailAddress: { address: to } }],
+    },
+  });
+  if (!res.ok) throw new Error(`Send failed: ${res.status}`);
 }
 
 export async function isMicrosoftConnected(userId: string): Promise<boolean> {

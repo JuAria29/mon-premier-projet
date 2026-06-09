@@ -77,6 +77,7 @@ export interface GraphTask {
   importance: string;
   dueDateTime?: string;
   listName?: string;
+  listId?: string;
 }
 
 export interface NotePageItem {
