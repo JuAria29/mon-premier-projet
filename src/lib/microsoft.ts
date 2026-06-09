@@ -1,5 +1,5 @@
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import type { Mail, GraphTask, NotePageItem, MailFolder, CalendarEvent } from "@/types";
+import type { Mail, GraphTask, NotePageItem, MailFolder, CalendarEvent, MicrosoftCalendar } from "@/types";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -267,31 +267,62 @@ export async function sendNewMail(userId: string, to: string, subject: string, b
   if (!res.ok) throw new Error(`Send failed: ${res.status}`);
 }
 
-export async function getCalendarEvents(userId: string, from: string, to: string): Promise<CalendarEvent[]> {
+export async function getMicrosoftCalendars(userId: string): Promise<MicrosoftCalendar[]> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");
 
   const data = await graphFetch(
     token,
-    `/me/calendarView?startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}&$top=50&$select=id,subject,start,end,location,isAllDay,bodyPreview,organizer&$orderby=start/dateTime`
+    "/me/calendars?$top=30&$select=id,name,hexColor,isDefaultCalendar,canEdit"
   );
 
-  return (data.value ?? []).map((e: Record<string, unknown>) => {
-    const startObj = e.start as { dateTime?: string } | undefined;
-    const endObj = e.end as { dateTime?: string } | undefined;
-    const locObj = e.location as { displayName?: string } | undefined;
-    const orgObj = e.organizer as { emailAddress?: { name?: string } } | undefined;
-    return {
-      id: e.id as string,
-      subject: (e.subject as string) || "(sans titre)",
-      start: startObj?.dateTime || "",
-      end: endObj?.dateTime || "",
-      location: locObj?.displayName || undefined,
-      isAllDay: (e.isAllDay as boolean) || false,
-      bodyPreview: (e.bodyPreview as string) || undefined,
-      organizer: orgObj?.emailAddress?.name || undefined,
-    };
-  });
+  return (data.value ?? []).map((c: Record<string, unknown>) => ({
+    id: c.id as string,
+    name: (c.name as string) || "Calendrier",
+    hexColor: (c.hexColor as string) || "#b5612f",
+    isDefaultCalendar: (c.isDefaultCalendar as boolean) || false,
+    canEdit: (c.canEdit as boolean) || false,
+  }));
+}
+
+function mapCalendarEvent(e: Record<string, unknown>, calendarId?: string, calendarName?: string, calendarColor?: string): CalendarEvent {
+  const startObj = e.start as { dateTime?: string } | undefined;
+  const endObj = e.end as { dateTime?: string } | undefined;
+  const locObj = e.location as { displayName?: string } | undefined;
+  const orgObj = e.organizer as { emailAddress?: { name?: string } } | undefined;
+  return {
+    id: e.id as string,
+    subject: (e.subject as string) || "(sans titre)",
+    start: startObj?.dateTime || "",
+    end: endObj?.dateTime || "",
+    location: locObj?.displayName || undefined,
+    isAllDay: (e.isAllDay as boolean) || false,
+    bodyPreview: (e.bodyPreview as string) || undefined,
+    organizer: orgObj?.emailAddress?.name || undefined,
+    calendarId,
+    calendarName,
+    calendarColor,
+  };
+}
+
+export async function getCalendarEvents(userId: string, from: string, to: string, calendarIds?: string[]): Promise<CalendarEvent[]> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  const params = `startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}&$top=100&$select=id,subject,start,end,location,isAllDay,bodyPreview,organizer&$orderby=start/dateTime`;
+
+  if (!calendarIds || calendarIds.length === 0) {
+    const data = await graphFetch(token, `/me/calendarView?${params}`);
+    return (data.value ?? []).map((e: Record<string, unknown>) => mapCalendarEvent(e));
+  }
+
+  const allEvents: CalendarEvent[] = [];
+  for (const calId of calendarIds) {
+    const data = await graphFetch(token, `/me/calendars/${calId}/calendarView?${params}`);
+    allEvents.push(...(data.value ?? []).map((e: Record<string, unknown>) => mapCalendarEvent(e, calId)));
+  }
+  allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  return allEvents;
 }
 
 export async function createCalendarEvent(
@@ -301,6 +332,7 @@ export async function createCalendarEvent(
   end: string,
   location?: string,
   body?: string,
+  calendarId?: string,
 ): Promise<void> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");
@@ -312,7 +344,8 @@ export async function createCalendarEvent(
   if (location) payload.location = { displayName: location };
   if (body) payload.body = { contentType: "Text", content: body };
 
-  const res = await graphRequest(token, "POST", "/me/events", payload);
+  const path = calendarId ? `/me/calendars/${calendarId}/events` : "/me/events";
+  const res = await graphRequest(token, "POST", path, payload);
   if (!res.ok) throw new Error(`Create event failed: ${res.status}`);
 }
 

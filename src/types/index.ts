@@ -104,4 +104,15 @@ export interface CalendarEvent {
   isAllDay: boolean;
   bodyPreview?: string;
   organizer?: string;
+  calendarId?: string;
+  calendarName?: string;
+  calendarColor?: string;
+}
+
+export interface MicrosoftCalendar {
+  id: string;
+  name: string;
+  hexColor: string;
+  isDefaultCalendar: boolean;
+  canEdit: boolean;
 }
