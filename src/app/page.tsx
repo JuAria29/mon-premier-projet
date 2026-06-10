@@ -134,18 +134,24 @@ export default function DashboardPage() {
   const coachMessage = { ...data.coach[session], ton };
   const horizons = realHorizons ?? data.horizons;
 
+  const coachRow = (
+    <div className="coach-objectives-row">
+      <CoachExchange workspace={workspace} ton={ton} session={session} />
+      <HorizonStrip horizons={horizons} compact />
+    </div>
+  );
+
   const renderDashboard = () => {
     if (session === "soir") {
       return (
         <div className="dash dash-soir">
           <Greeting session={session} userName="Julien Pasini" />
+          {coachRow}
           <div className="two-col">
             <CoachCard message={coachMessage} compact />
             <StatusCard tasks={tasks} session={session} />
           </div>
           <Debrief tasks={tasks} demain={data.demain} />
-          <CoachExchange workspace={workspace} ton={ton} session={session} />
-          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -154,12 +160,11 @@ export default function DashboardPage() {
       return (
         <div className="dash dash-focus">
           <Greeting session={session} userName="Julien Pasini" />
+          {coachRow}
           <CoachCard message={coachMessage} />
           <DayPlan agenda={data.agenda} />
           <StatusCard tasks={tasks} session={session} />
           <TaskList tasks={tasks} onToggle={handleToggle} />
-          <CoachExchange workspace={workspace} ton={ton} session={session} />
-          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -168,6 +173,7 @@ export default function DashboardPage() {
       return (
         <div className="dash dash-dense">
           <Greeting session={session} userName="Julien Pasini" />
+          {coachRow}
           <div className="two-col">
             <div className="col-stack">
               <CoachCard message={coachMessage} compact />
@@ -178,8 +184,6 @@ export default function DashboardPage() {
               <DayPlan agenda={data.agenda} />
             </div>
           </div>
-          <CoachExchange workspace={workspace} ton={ton} session={session} />
-          <HorizonStrip horizons={horizons} />
         </div>
       );
     }
@@ -187,14 +191,13 @@ export default function DashboardPage() {
     return (
       <div className="dash dash-equilibre">
         <Greeting session={session} userName="Julien Pasini" />
+        {coachRow}
         <CoachCard message={coachMessage} />
         <DayPlan agenda={data.agenda} />
         <div className="two-col">
           <TaskList tasks={tasks} onToggle={handleToggle} />
           <StatusCard tasks={tasks} session={session} />
         </div>
-        <CoachExchange workspace={workspace} ton={ton} session={session} />
-        <HorizonStrip horizons={horizons} />
       </div>
     );
   };

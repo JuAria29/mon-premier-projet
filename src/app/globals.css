@@ -894,6 +894,15 @@ body.comfy    { --gap: 24px; }
   font-weight: 500;
 }
 
+/* ── Coach + Objectives row ─────────────────────────────── */
+
+.coach-objectives-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  align-items: start;
+}
+
 /* ── HorizonStrip ───────────────────────────────────────── */
 
 .horizon-strip {
@@ -942,6 +951,56 @@ body.comfy    { --gap: 24px; }
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+/* ── HorizonStrip compact (vertical) ───────────────────── */
+
+.horizon-card-compact {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.horizon-list {
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.horizon-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  transition: background 0.15s;
+}
+.horizon-row:hover { background: var(--surface-3); }
+
+.horizon-ring-wrap-sm {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.horizon-pct-sm {
+  position: absolute;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.horizon-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 /* ── Debrief ────────────────────────────────────────────── */

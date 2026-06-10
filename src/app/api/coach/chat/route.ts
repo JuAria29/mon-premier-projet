@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createSupabaseServiceClient } from "@/lib/supabase";
-import { getTasks, isMicrosoftConnected } from "@/lib/microsoft";
+import { getTasks, getEmails, isMicrosoftConnected } from "@/lib/microsoft";
 import type { ObjectiveLevel } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -26,11 +26,11 @@ const tonDescriptions: Record<string, string> = {
 
 const briefingTriggers: Record<string, string> = {
   matin:
-    "Fais-moi un briefing de démarrage pour cette journée. Analyse mes objectifs et mes tâches, et propose-moi 3 priorités concrètes pour aujourd'hui. Sois précis et actionnable.",
+    "Donne-moi mon briefing du matin. Analyse mes mails récents, mes tâches et mes objectifs. Propose-moi 3 priorités concrètes pour aujourd'hui, en prenant en compte ce qui est urgent dans mes mails.",
   midi:
-    "Fais un point de mi-journée. Sur la base de mes objectifs et de mes tâches en cours, qu'est-ce qui devrait être ma priorité pour cet après-midi ?",
+    "Point de mi-journée. Sur la base de mes mails, tâches et objectifs, qu'est-ce qui doit être ma priorité pour cet après-midi ? Y a-t-il des mails urgents qui nécessitent une réponse aujourd'hui ?",
   soir:
-    "Aide-moi à faire le bilan de cette journée. Sur la base de mes objectifs, qu'est-ce que j'aurais dû accomplir aujourd'hui, et qu'est-ce que je prépare pour demain ?",
+    "Bilan de fin de journée. Analyse mes mails non traités et mes tâches en suspens. Qu'est-ce que je dois préparer pour demain et y a-t-il des points urgents à ne pas oublier ?",
 };
 
 export async function POST(req: NextRequest) {
@@ -69,33 +69,54 @@ export async function POST(req: NextRequest) {
             .join("\n")
         : "Aucun objectif défini pour l'instant.";
 
-    // Fetch tasks from Microsoft if connected
-    let tasksContext =
-      "Tâches Microsoft To Do : non disponible (compte non connecté).";
+    // Fetch Microsoft data if connected
+    let tasksContext = "Tâches Microsoft To Do : compte non connecté.";
+    let mailsContext = "Mails récents : compte non connecté.";
+
     try {
       const connected = await isMicrosoftConnected(USER_ID);
       if (connected) {
+        // Tasks
         const tasks = await getTasks(USER_ID);
         const pending = tasks.filter((t) => t.status !== "completed").slice(0, 12);
-        if (pending.length > 0) {
-          tasksContext =
-            `Tâches Microsoft To Do (${pending.length} en cours) :\n` +
-            pending
-              .map(
-                (t) =>
-                  `- [${t.importance === "high" ? "urgent" : t.importance ?? "normal"}] ${t.title}${
-                    t.dueDateTime
-                      ? ` — échéance : ${new Date(t.dueDateTime).toLocaleDateString("fr-FR")}`
-                      : ""
-                  }${t.listName ? ` (liste : ${t.listName})` : ""}`
-              )
+        tasksContext =
+          pending.length > 0
+            ? `Tâches Microsoft To Do (${pending.length} en cours) :\n` +
+              pending
+                .map(
+                  (t) =>
+                    `- [${t.importance === "high" ? "URGENT" : t.importance ?? "normal"}] ${t.title}${
+                      t.dueDateTime
+                        ? ` — échéance : ${new Date(t.dueDateTime).toLocaleDateString("fr-FR")}`
+                        : ""
+                    }${t.listName ? ` (${t.listName})` : ""}`
+                )
+                .join("\n")
+            : "Tâches Microsoft To Do : aucune tâche en cours.";
+
+        // Recent mails (preview only, no full body)
+        const mails = await getEmails(USER_ID, 8);
+        if (mails.length > 0) {
+          mailsContext =
+            `${mails.length} mails récents :\n` +
+            mails
+              .map((m) => {
+                const date = new Date(m.date).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const preview = m.preview?.slice(0, 120).trim() || "(pas d'aperçu)";
+                return `- [${date}] De : ${m.from} — Objet : ${m.subject}\n  Aperçu : ${preview}`;
+              })
               .join("\n");
         } else {
-          tasksContext = "Tâches Microsoft To Do : aucune tâche en cours.";
+          mailsContext = "Mails récents : boîte de réception vide.";
         }
       }
     } catch {
-      // Microsoft not reachable — keep default message
+      // Microsoft not reachable — keep default messages
     }
 
     const sessionNames: Record<string, string> = {
@@ -110,17 +131,19 @@ export async function POST(req: NextRequest) {
 
 **Contexte en temps réel**
 - Date : ${today}
-- Moment de la journée : ${sessionNames[session] ?? session}
-- Espace de travail : ${workspace === "pro" ? "Professionnel" : "Personnel"}
+- Moment : ${sessionNames[session] ?? session}
+- Espace : ${workspace === "pro" ? "Professionnel" : "Personnel"}
 
 **Objectifs de Julien**
 ${objectivesContext}
 
 **${tasksContext}**
 
+**${mailsContext}**
+
 Tu as accès à ces données en temps réel. Appuie-toi dessus pour contextualiser tes réponses.
-Quand on te demande un briefing ou des suggestions, propose des actions concrètes liées aux objectifs et tâches réels.
-Réponds toujours en français. Sois précis, actionnable et adapté au moment de la journée.
+Pour les briefings, analyse les mails urgents, les tâches en retard et les objectifs, et propose un plan d'action concret.
+Réponds toujours en français. Sois précis et actionnable.
 N'invente pas de données — si une information est absente, dis-le clairement.`;
 
     // Build messages for Claude
@@ -142,7 +165,7 @@ N'invente pas de données — si une information est absente, dis-le clairement.
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      max_tokens: 1200,
       system: systemPrompt,
       messages: claudeMessages,
     });
