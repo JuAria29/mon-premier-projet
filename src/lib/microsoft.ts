@@ -18,42 +18,50 @@ async function getStoredToken(userId: string): Promise<string | null> {
     return data.access_token;
   }
 
-  if (!data.refresh_token) return null;
-  return refreshAccessToken(userId, data.refresh_token);
+  if (!data.refresh_token) throw new Error("not_connected");
+  const refreshed = await refreshAccessToken(userId, data.refresh_token);
+  if (!refreshed) throw new Error("not_connected");
+  return refreshed;
 }
 
-async function refreshAccessToken(userId: string, refreshToken: string): Promise<string> {
-  const tenantId = process.env.MICROSOFT_TENANT_ID!;
-  const res = await fetch(
-    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: process.env.MICROSOFT_CLIENT_ID!,
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
-        refresh_token: refreshToken,
-        grant_type: "refresh_token",
-        scope: "User.Read Mail.Read Mail.Send Mail.ReadWrite Calendars.Read Calendars.ReadWrite Tasks.ReadWrite Notes.Read offline_access",
-      }),
-    }
-  );
+async function refreshAccessToken(userId: string, refreshToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      // "common" must match the endpoint used in /api/microsoft/connect and /callback
+      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: process.env.MICROSOFT_CLIENT_ID!,
+          client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
+          refresh_token: refreshToken,
+          grant_type: "refresh_token",
+          scope: "User.Read Mail.Read Mail.Send Mail.ReadWrite Calendars.Read Calendars.ReadWrite Tasks.ReadWrite Notes.Read offline_access",
+        }),
+      }
+    );
 
-  if (!res.ok) throw new Error("Token refresh failed");
+    if (!res.ok) return null;
 
-  const json = await res.json();
-  const expiresAt = new Date(Date.now() + json.expires_in * 1000).toISOString();
+    const json = await res.json();
+    if (!json.access_token) return null;
 
-  const supabase = createSupabaseServiceClient();
-  await supabase.from("microsoft_tokens").upsert({
-    user_id: userId,
-    access_token: json.access_token,
-    refresh_token: json.refresh_token ?? refreshToken,
-    expires_at: expiresAt,
-    updated_at: new Date().toISOString(),
-  });
+    const expiresAt = new Date(Date.now() + json.expires_in * 1000).toISOString();
 
-  return json.access_token;
+    const supabase = createSupabaseServiceClient();
+    await supabase.from("microsoft_tokens").upsert({
+      user_id: userId,
+      access_token: json.access_token,
+      refresh_token: json.refresh_token ?? refreshToken,
+      expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    });
+
+    return json.access_token;
+  } catch {
+    return null;
+  }
 }
 
 async function graphFetch(token: string, path: string) {
