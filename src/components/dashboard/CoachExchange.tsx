@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "@/components/ui/Icons";
-import type { Workspace } from "@/types";
+import type { Session, Workspace } from "@/types";
 
 interface Message {
   role: "user" | "coach";
@@ -12,49 +12,14 @@ interface Message {
 interface CoachExchangeProps {
   workspace: Workspace;
   ton: string;
+  session?: Session;
 }
 
-function coachReply(text: string, ton: string): string {
-  const lower = text.toLowerCase();
-  const hasProjet = /projet|lancer|id[ée]e|cr[ée]er/.test(lower);
-
-  const replies: Record<string, string[]> = {
-    direct: [
-      "Noté. Quelle est la prochaine action concrète ?",
-      "Bien. Comment allez-vous mesurer le succès demain ?",
-      "Intéressant. Qu'est-ce qui vous a bloqué aujourd'hui ?",
-    ],
-    chaleureux: [
-      "Merci de partager ça. Comment vous sentez-vous par rapport à cette journée ?",
-      "C'est une belle avancée ! Qu'est-ce qui vous a donné de l'énergie aujourd'hui ?",
-      "Je vous entends. Prenez soin de vous ce soir.",
-    ],
-    exigeant: [
-      "C'est bien. Mais pouviez-vous faire mieux ? Qu'est-ce qui vous en a empêché ?",
-      "Résultat noté. Demain, visez plus haut sur ce point.",
-      "Analyse froide : qu'est-ce que vous auriez dû faire différemment ?",
-    ],
-    bienveillant: [
-      "Vous avez bien travaillé aujourd'hui. Accordez-vous du repos.",
-      "Chaque journée compte. Celle-ci a eu ses bons moments.",
-      "Notez ce qui a bien marché — c'est votre carburant pour demain.",
-    ],
-  };
-
-  const tonKey = ton.toLowerCase();
-  const pool = replies[tonKey] ?? replies.chaleureux;
-  const base = pool[Math.floor(Math.random() * pool.length)];
-
-  if (hasProjet) {
-    return base + "\n\n💡 J'ai noté cette idée de projet pour votre liste.";
-  }
-  return base;
-}
-
-export function CoachExchange({ workspace, ton }: CoachExchangeProps) {
+export function CoachExchange({ workspace, ton, session = "matin" }: CoachExchangeProps) {
   const storageKey = `aria-exchange-${workspace}`;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,24 +33,78 @@ export function CoachExchange({ workspace, ton }: CoachExchangeProps) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, loading]);
 
-  function send() {
-    const text = input.trim();
-    if (!text) return;
-    const reply = coachReply(text, ton);
-    const next: Message[] = [
-      ...messages,
-      { role: "user", text },
-      { role: "coach", text: reply },
-    ];
+  function persist(next: Message[]) {
     setMessages(next);
-    setInput("");
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       // ignore
     }
+  }
+
+  async function callCoach(userText: string, trigger?: "briefing") {
+    setLoading(true);
+
+    // Build API message history (exclude the new user message if briefing)
+    const history = trigger
+      ? []
+      : messages.map((m) => ({
+          role: m.role === "coach" ? "assistant" : "user",
+          content: m.text,
+        }));
+
+    const apiMessages = trigger
+      ? undefined
+      : [...history, { role: "user", content: userText }];
+
+    try {
+      const res = await fetch("/api/coach/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: apiMessages,
+          workspace,
+          ton: ton.toLowerCase(),
+          session,
+          trigger,
+        }),
+      });
+
+      const data = await res.json();
+      const replyText = data.reply || "Je n'ai pas pu générer de réponse. Réessayez.";
+
+      const next: Message[] = trigger
+        ? [{ role: "coach", text: replyText }]
+        : [...messages, { role: "user", text: userText }, { role: "coach", text: replyText }];
+
+      persist(next);
+    } catch {
+      const errorMsg = "Une erreur réseau est survenue. Vérifiez votre connexion.";
+      const next: Message[] = trigger
+        ? [{ role: "coach", text: errorMsg }]
+        : [...messages, { role: "user", text: userText }, { role: "coach", text: errorMsg }];
+      persist(next);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput("");
+    await callCoach(text);
+  }
+
+  async function requestBriefing() {
+    if (loading) return;
+    await callCoach("", "briefing");
+  }
+
+  function clearHistory() {
+    persist([]);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -99,16 +118,32 @@ export function CoachExchange({ workspace, ton }: CoachExchangeProps) {
     <div className="card exchange-card">
       <div className="card-head-row" style={{ padding: "16px 20px 0" }}>
         <span className="kicker">Échange avec le coach</span>
-        {messages.length > 0 && (
-          <span className="count-pill">{Math.floor(messages.length / 2)} échange{messages.length / 2 > 1 ? "s" : ""}</span>
-        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {messages.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="clear-btn"
+              title="Effacer l'historique"
+            >
+              Effacer
+            </button>
+          )}
+          <button
+            className="briefing-btn"
+            onClick={requestBriefing}
+            disabled={loading}
+          >
+            <Icon name="bolt" size={13} />
+            Briefing du jour
+          </button>
+        </div>
       </div>
 
       {/* Thread */}
       <div className="exchange-thread">
-        {messages.length === 0 && (
+        {messages.length === 0 && !loading && (
           <p className="empty-note" style={{ textAlign: "center", padding: "24px 0" }}>
-            Partagez votre bilan de journée avec Aria…
+            Demandez un <strong>briefing du jour</strong> ou posez une question à Aria…
           </p>
         )}
         {messages.map((m, i) => (
@@ -118,6 +153,13 @@ export function CoachExchange({ workspace, ton }: CoachExchangeProps) {
             ))}
           </div>
         ))}
+        {loading && (
+          <div className="bubble coach typing-bubble">
+            <span className="dot" />
+            <span className="dot" />
+            <span className="dot" />
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -125,13 +167,19 @@ export function CoachExchange({ workspace, ton }: CoachExchangeProps) {
       <div className="exchange-input-row">
         <textarea
           className="exchange-textarea"
-          placeholder="Votre bilan du jour… (⌘↵ pour envoyer)"
+          placeholder="Posez votre question à Aria… (⌘↵ pour envoyer)"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={3}
+          disabled={loading}
         />
-        <button className="send-btn" onClick={send} disabled={!input.trim()} title="Envoyer">
+        <button
+          className="send-btn"
+          onClick={send}
+          disabled={!input.trim() || loading}
+          title="Envoyer"
+        >
           <Icon name="send" size={16} />
         </button>
       </div>

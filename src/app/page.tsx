@@ -144,7 +144,7 @@ export default function DashboardPage() {
             <StatusCard tasks={tasks} session={session} />
           </div>
           <Debrief tasks={tasks} demain={data.demain} />
-          <CoachExchange workspace={workspace} ton={ton} />
+          <CoachExchange workspace={workspace} ton={ton} session={session} />
           <HorizonStrip horizons={horizons} />
         </div>
       );
@@ -158,6 +158,7 @@ export default function DashboardPage() {
           <DayPlan agenda={data.agenda} />
           <StatusCard tasks={tasks} session={session} />
           <TaskList tasks={tasks} onToggle={handleToggle} />
+          <CoachExchange workspace={workspace} ton={ton} session={session} />
           <HorizonStrip horizons={horizons} />
         </div>
       );
@@ -177,6 +178,7 @@ export default function DashboardPage() {
               <DayPlan agenda={data.agenda} />
             </div>
           </div>
+          <CoachExchange workspace={workspace} ton={ton} session={session} />
           <HorizonStrip horizons={horizons} />
         </div>
       );
@@ -191,6 +193,7 @@ export default function DashboardPage() {
           <TaskList tasks={tasks} onToggle={handleToggle} />
           <StatusCard tasks={tasks} session={session} />
         </div>
+        <CoachExchange workspace={workspace} ton={ton} session={session} />
         <HorizonStrip horizons={horizons} />
       </div>
     );
