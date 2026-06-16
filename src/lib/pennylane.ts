@@ -52,80 +52,111 @@ export interface PLInvoice {
   customerName: string | null;
 }
 
+// V2 API response shape
 type RawPLInvoice = {
   id?: string;
   date?: string;
   deadline?: string | null;
   status?: string;
+  // V2 amount fields
   amount?: number;
   currency_amount?: number;
   currency_amount_before_tax?: number;
   amount_excluding_tax?: number;
   total_excl_tax?: number;
+  // V2 may nest under invoice
+  invoice?: {
+    amount?: number;
+    currency_amount?: number;
+    currency_amount_before_tax?: number;
+    label?: string;
+    date?: string;
+    deadline?: string;
+    status?: string;
+  };
   label?: string;
   thirdparty_name?: string;
   customer?: { name?: string; customer_name?: string };
+  supplier?: { name?: string };
 };
 
 function mapInvoice(raw: RawPLInvoice): PLInvoice {
-  const amountTTC = raw.currency_amount ?? raw.amount ?? 0;
+  // V2 may nest data under raw.invoice
+  const src = raw.invoice ? { ...raw.invoice, ...raw } : raw;
+  const amountTTC = src.currency_amount ?? src.amount ?? 0;
   const amountHT =
-    raw.currency_amount_before_tax ??
-    raw.amount_excluding_tax ??
-    raw.total_excl_tax ??
+    src.currency_amount_before_tax ??
+    src.amount_excluding_tax ??
+    src.total_excl_tax ??
     amountTTC;
   const customerName =
     raw.thirdparty_name ??
     raw.customer?.customer_name ??
     raw.customer?.name ??
+    raw.supplier?.name ??
     null;
   return {
     id: raw.id ?? "",
-    date: raw.date ?? "",
-    deadline: raw.deadline ?? null,
-    status: raw.status ?? "unknown",
+    date: src.date ?? raw.date ?? "",
+    deadline: (src.deadline ?? raw.deadline) ?? null,
+    status: src.status ?? raw.status ?? "unknown",
     amountTTC,
     amountHT,
-    label: raw.label ?? "",
+    label: src.label ?? raw.label ?? "",
     customerName,
   };
 }
 
-async function fetchAll(endpoint: string, from: string, to: string): Promise<PLInvoice[]> {
+// V2 uses cursor-based pagination and different date filter format
+async function fetchAll(endpoint: string, from: string, to: string, dateFilter?: string): Promise<PLInvoice[]> {
   const all: PLInvoice[] = [];
-  let page = 1;
+  let cursor: string | null = null;
 
   while (true) {
-    const params = new URLSearchParams({
-      "filter[date][gt]": from,
-      "filter[date][lt]": to,
-      per_page: "100",
-      page: String(page),
-    });
+    const params = new URLSearchParams({ per_page: "100" });
+    if (cursor) params.set("cursor", cursor);
+
+    // Date filter format determined from debug (injected once known)
+    if (dateFilter === "min_max") {
+      params.set("filter[min_date]", from);
+      params.set("filter[max_date]", to);
+    } else if (dateFilter === "issued") {
+      params.set("filter[issued_after]", from);
+      params.set("filter[issued_before]", to);
+    }
+    // If no dateFilter set, fetch all and filter below
 
     const data = (await plFetch(`/${endpoint}?${params}`)) as Record<string, unknown>;
+    const items = (data.items as RawPLInvoice[] | undefined) ?? [];
 
-    const items =
-      (data[endpoint] as RawPLInvoice[] | undefined) ??
-      (data.invoices as RawPLInvoice[] | undefined) ??
-      [];
+    // Client-side date filter fallback when API filter not yet known
+    const filtered = dateFilter
+      ? items
+      : items.filter((i) => {
+          const d = i.date ?? i.invoice?.date ?? "";
+          return d >= from && d <= to;
+        });
 
-    all.push(...items.map(mapInvoice));
+    all.push(...filtered.map(mapInvoice));
 
-    const meta = data.meta as { total_pages?: number } | undefined;
-    if (!meta?.total_pages || page >= meta.total_pages || items.length === 0) break;
-    page++;
+    const hasMore = data.has_more as boolean | undefined;
+    const nextCursor = data.next_cursor as string | undefined;
+    if (!hasMore || !nextCursor || items.length === 0) break;
+    cursor = nextCursor;
   }
 
   return all;
 }
 
+// DATE_FILTER will be set once we confirm the correct format from debug
+const DATE_FILTER = undefined; // "min_max" | "issued" | undefined (client-side fallback)
+
 export async function getCustomerInvoices(from: string, to: string): Promise<PLInvoice[]> {
-  return fetchAll("customer_invoices", from, to);
+  return fetchAll("customer_invoices", from, to, DATE_FILTER);
 }
 
 export async function getSupplierInvoices(from: string, to: string): Promise<PLInvoice[]> {
-  return fetchAll("supplier_invoices", from, to);
+  return fetchAll("supplier_invoices", from, to, DATE_FILTER);
 }
 
 export async function isPennylaneConfigured(): Promise<boolean> {
