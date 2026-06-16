@@ -46,6 +46,63 @@ interface ManualHistoryEntry {
 
 type Tab = "comptabilite" | "activite" | "evolution" | "projection";
 
+// ─── Catégorisation des charges fournisseurs ──────────────────────────────────
+
+type ChargeCategory = "Matériaux & Achats" | "Carburant" | "Véhicules" | "Assurances" | "Sous-traitance" | "Énergie & Télécom" | "Taxes & cotisations" | "Frais généraux";
+
+const CATEGORY_COLORS: Record<ChargeCategory, string> = {
+  "Matériaux & Achats":  "var(--accent)",
+  "Carburant":           "oklch(0.62 0.12 55)",
+  "Véhicules":           "oklch(0.52 0.085 245)",
+  "Assurances":          "oklch(0.52 0.1 295)",
+  "Sous-traitance":      "oklch(0.55 0.085 155)",
+  "Énergie & Télécom":   "oklch(0.52 0.085 200)",
+  "Taxes & cotisations": "oklch(0.55 0.08 30)",
+  "Frais généraux":      "oklch(0.6 0.02 60)",
+};
+
+function extractSupplierName(label: string): string {
+  return label
+    .replace(/^(Facture|Avoir|Note de débit|Note de crédit)\s+/i, "")
+    .replace(/\s+-\s+[\w\d]+.*$/, "")
+    .trim()
+    .toUpperCase();
+}
+
+function categorizeCharge(label: string): ChargeCategory {
+  const n = extractSupplierName(label);
+
+  if (/CARBURANT|ESSENCE|GASOIL|DIESEL|STATION|TOTAL\s*(ENER|ACCES)|BP\s|SHELL|Q8\b|ESSO|DYNEFF|LECLERC\s*DRIVE/.test(n))
+    return "Carburant";
+
+  if (/ASSUR|AXA|MAIF|ALLIANZ|GENERALI|MMA\b|GMF\b|MATMUT|GROUPAMA|COVEA|SMABTP|APRIL|AREAS/.test(n))
+    return "Assurances";
+
+  if (/GARAGE|PNEU|PNEUM|LEASING|LOA\b|LLD\b|RENAULT|PEUGEOT|CITROEN|VOLKSWAGEN|VW\b|FORD\b|TOYOTA|MERCEDES|OPEL|FIAT|AUTOMAT|SECURITEST|CT AUTO|CONTROLE TECH|SPEEDY|NORAUTO|MIDAS|EUROMASTER|BOSCH CAR/.test(n))
+    return "Véhicules";
+
+  if (/REXEL|LEGRAND|SCHNEIDER|GRDF|EDF\b|ENEDIS|ELECTRI|EAU\b|VEOLIA|SUEZ|ORANGE|SFR\b|BOUYGUE|FREE\b|NUMERICABLE|OVH|IONOS|SCALEWAY|NETLIFI/.test(n))
+    return "Énergie & Télécom";
+
+  if (/LEROY.MERLIN|CASTORAMA|BRICOMAN|POINT.P|BMATERIAL|SOCODA|REXEL|PROLIANS|WÜRTH|WURTH|SONEPAR|QUINCAILLER|BRICOMARCHE|BRICO.DEPOT|CSTB|EDILIANS|KNAUF|ISOVER|DOMOPLUS|ESPACE.EMERAUDE/.test(n))
+    return "Matériaux & Achats";
+
+  if (/SOUS.TRAIT|INTERIM|MANPOWER|ADECCO|RANDSTAD|SYNERGIE|PROMAN|PRESTATION|ARTISAN|ELECTRICIEN|PLOMBIER|POSEUR|INSTALLATEUR/.test(n))
+    return "Sous-traitance";
+
+  if (/URSSAF|IMPOT|TRESOR|DGI|SIE\b|TAXE|CFE\b|TVS\b|AGEFIPH|RSI\b|CIPAV|CMA\b|CCI\b|CHAMBRE|CONTRIBUTION/.test(n))
+    return "Taxes & cotisations";
+
+  return "Frais généraux";
+}
+
+interface CategorySummary {
+  category: ChargeCategory;
+  total: number;
+  count: number;
+  items: Array<{ label: string; supplier: string; amountHT: number; date: string }>;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n: number | null | undefined, d = 0) => {
@@ -100,6 +157,62 @@ function Bar({ value, max, color = "var(--accent)", h = 8 }: { value: number; ma
   return (
     <div style={{ height: h, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden" }}>
       <div style={{ width: `${w}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.5s ease" }} />
+    </div>
+  );
+}
+
+function CategoryCard({ cat, color, pctOfTotal, totalCharges, topSuppliers }: {
+  cat: CategorySummary; color: string; pctOfTotal: number;
+  totalCharges: number; topSuppliers: [string, number][];
+}) {
+  const [open, setOpen] = useState(false);
+  // Top suppliers in this category
+  const catSuppliers = topSuppliers
+    .filter(([name]) => cat.items.some((i) => i.supplier === name || i.label.toUpperCase().includes(name)))
+    .slice(0, 4);
+
+  return (
+    <div className="card" style={{ padding: "14px 18px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, cursor: "pointer" }}
+        onClick={() => setOpen((v) => !v)}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cat.category}</span>
+            <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{cat.count} factures</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color }}>{fmt(cat.total)}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{Math.round(pctOfTotal)} %</span>
+            </div>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <Bar value={cat.total} max={totalCharges} color={color} h={5} />
+          </div>
+        </div>
+        <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>{open ? "▲" : "▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 2 }}>
+          {cat.items.map((item, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0",
+              borderBottom: i < cat.items.length - 1 ? "1px solid var(--border)" : "none", fontSize: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
+                  {item.supplier || item.label}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{item.date}</div>
+              </div>
+              <strong style={{ flexShrink: 0, marginLeft: 12 }}>{fmt(item.amountHT)}</strong>
+            </div>
+          ))}
+          {cat.count > 5 && (
+            <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "6px 0 0" }}>
+              + {cat.count - 5} autres factures dans cette catégorie
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -358,15 +471,27 @@ export default function FinancesPage() {
     monthlyCharges[k] = (monthlyCharges[k] || 0) + Math.abs(inv.amountHT);
   }
 
-  // Top fournisseurs (groupement par label prefix)
+  // Catégories de charges
+  const categoryMap: Record<string, CategorySummary> = {};
+  for (const inv of plCurrentCharges) {
+    const cat = categorizeCharge(inv.label);
+    if (!categoryMap[cat]) categoryMap[cat] = { category: cat, total: 0, count: 0, items: [] };
+    const amt = Math.abs(inv.amountHT);
+    categoryMap[cat].total += amt;
+    categoryMap[cat].count += 1;
+    if (categoryMap[cat].items.length < 5) {
+      categoryMap[cat].items.push({ label: inv.label, supplier: extractSupplierName(inv.label), amountHT: amt, date: inv.date });
+    }
+  }
+  const categories: CategorySummary[] = Object.values(categoryMap).sort((a, b) => b.total - a.total);
+
+  // Top fournisseurs
   const supplierMap: Record<string, number> = {};
   for (const inv of plCurrentCharges) {
-    const name = inv.label.replace(/^(Facture|Avoir)\s+/i, "").replace(/\s+-\s+\d+.*$/, "").trim();
+    const name = extractSupplierName(inv.label);
     if (name) supplierMap[name] = (supplierMap[name] || 0) + Math.abs(inv.amountHT);
   }
-  const topSuppliers = Object.entries(supplierMap)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 8);
+  const topSuppliers = Object.entries(supplierMap).sort(([, a], [, b]) => b - a).slice(0, 8);
 
   const prevYear = plHistory.find((h) => h.startYear === fy.startYear - 1);
   const caGrowth = delta(caReel, prevYear?.ca_ht ?? null);
@@ -538,27 +663,37 @@ export default function FinancesPage() {
                       <MonthlyBars monthlyCA={monthlyCharges} startYear={fy.startYear} />
                     </div>
 
-                    {/* Top fournisseurs */}
-                    {topSuppliers.length > 0 && (
-                      <div className="card" style={{ padding: "16px 18px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>Top fournisseurs — exercice {fy.label}</div>
-                          <SourceBadge source="pennylane" />
-                        </div>
-                        {topSuppliers.map(([name, total]) => (
-                          <div key={name} style={{ marginBottom: 10 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
-                              <span style={{ color: "var(--text)", maxWidth: "70%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-                              <span>
-                                <strong>{fmt(total)}</strong>
-                                <span style={{ color: "var(--text-muted)", marginLeft: 5 }}>({Math.round((total / plChargesNettes) * 100)} %)</span>
-                              </span>
+                    {/* Breakdown par catégorie */}
+                    {categories.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {/* Salaires — hors Pennylane */}
+                        <div className="card" style={{ padding: "14px 18px", opacity: 0.7, borderStyle: "dashed" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Salaires & Charges sociales</div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Non disponible via Pennylane — à saisir dans l'onglet Évolution</div>
                             </div>
-                            <Bar value={total} max={topSuppliers[0][1]} color="oklch(0.52 0.085 245 / 0.6)" h={5} />
+                            <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: "var(--surface-2)", color: "var(--text-muted)" }}>Hors Pennylane</span>
                           </div>
-                        ))}
-                        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "10px 0 0" }}>
-                          Hors salaires, charges sociales et amortissements — voir onglet Projection pour estimation complète
+                        </div>
+
+                        {categories.map((cat) => {
+                          const color = CATEGORY_COLORS[cat.category];
+                          const pctOfTotal = plChargesNettes > 0 ? (cat.total / plChargesNettes) * 100 : 0;
+                          return (
+                            <CategoryCard
+                              key={cat.category}
+                              cat={cat}
+                              color={color}
+                              pctOfTotal={pctOfTotal}
+                              totalCharges={plChargesNettes}
+                              topSuppliers={topSuppliers}
+                            />
+                          );
+                        })}
+
+                        <p style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "4px 0" }}>
+                          Catégorisation automatique basée sur les libellés Pennylane · {plChargesCount} factures · {fmt(plChargesNettes)} HT
                         </p>
                       </div>
                     )}
