@@ -29,7 +29,8 @@ interface PLHistoryEntry {
   startYear: number; label: string; start: string; end: string; isCurrent: boolean;
   ca_ht: number; charges_fournisseurs: number; resultat_partiel: number;
   invoice_count: number; charge_count: number;
-  monthly_ca: Record<string, number>;
+  monthly_ca?: Record<string, number>;
+  monthly_charges?: Record<string, number>;
   status_breakdown: Record<string, number>;
 }
 
@@ -769,33 +770,33 @@ export default function FinancesPage() {
             {/* ══ ÉVOLUTION ════════════════════════════════════════════════════ */}
             {tab === "evolution" && (
               <>
-                {/* Pennylane history chart */}
+                {/* Charges fournisseurs par exercice (Pennylane) */}
                 <div className="card" style={{ padding: "16px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>CA par exercice — depuis 2018</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Charges fournisseurs par exercice — depuis 2018</div>
                     <SourceBadge source="pennylane" />
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
-                    Factures clients Pennylane — exercices oct → sept
+                    Factures fournisseurs Pennylane · exercices oct → sept · CA disponible dans les bilans ci-dessous
                   </div>
                   {plLoading ? (
                     <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
                       Chargement de l'historique Pennylane…
                     </div>
-                  ) : plHistory.length > 0 ? (
-                    <HistoryBars entries={plHistory.map((h) => ({ label: h.label, ca_ht: h.ca_ht, isCurrent: h.isCurrent }))} />
+                  ) : plHistory.filter(h => h.charges_fournisseurs > 0).length > 0 ? (
+                    <HistoryBars entries={plHistory.map((h) => ({ label: h.label, ca_ht: h.charges_fournisseurs, isCurrent: h.isCurrent }))} />
                   ) : (
-                    <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2)", borderRadius: 10, color: "var(--text-muted)", fontSize: 12 }}>
-                      {plConnected ? "Aucune donnée Pennylane disponible pour cette période" : "Connectez Pennylane pour voir l'historique"}
+                    <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2)", borderRadius: 10, color: "var(--text-muted)", fontSize: 12 }}>
+                      {plLoading ? "Chargement…" : plConnected ? "Aucune charge fournisseur trouvée" : "Connectez Pennylane pour voir l'historique"}
                     </div>
                   )}
                 </div>
 
-                {/* Pennylane detail table */}
-                {plHistory.length > 0 && (
+                {/* Tableau historique charges Pennylane */}
+                {plHistory.filter(h => h.charges_fournisseurs > 0).length > 0 && (
                   <div className="card" style={{ padding: "16px 18px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>Détail comptable par exercice</div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Charges fournisseurs par exercice</div>
                       <SourceBadge source="pennylane" />
                     </div>
                     <div style={{ overflowX: "auto" }}>
@@ -803,30 +804,24 @@ export default function FinancesPage() {
                         <thead>
                           <tr style={{ color: "var(--text-muted)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                             <th style={{ textAlign: "left", padding: "0 10px 8px 0" }}>Exercice</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>CA HT</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Charges fourn.</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Résultat partiel</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Factures</th>
-                            <th style={{ textAlign: "right", padding: "0 0 8px 10px" }}>Évolution CA</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Charges fourn. HT</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Nb factures</th>
+                            <th style={{ textAlign: "right", padding: "0 0 8px 10px" }}>Évolution</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {plHistory.map((h, i) => {
-                            const prev = i > 0 ? plHistory[i - 1] : null;
-                            const d = delta(h.ca_ht, prev?.ca_ht ?? null);
+                          {plHistory.filter(h => h.charges_fournisseurs > 0).map((h, i, arr) => {
+                            const prev = arr[i - 1];
+                            const d = delta(h.charges_fournisseurs, prev?.charges_fournisseurs ?? null);
                             return (
                               <tr key={h.label} style={{ borderTop: "1px solid var(--border)", background: h.isCurrent ? "var(--accent-soft)" : "transparent" }}>
                                 <td style={{ padding: "9px 10px 9px 0", fontWeight: h.isCurrent ? 700 : 500, color: h.isCurrent ? "var(--accent)" : "var(--text)" }}>
                                   {h.label}{h.isCurrent ? " *" : ""}
                                 </td>
-                                <td style={{ textAlign: "right", padding: "9px 10px", fontWeight: 600 }}>{h.ca_ht > 0 ? fmt(h.ca_ht) : "—"}</td>
-                                <td style={{ textAlign: "right", padding: "9px 10px", color: "var(--text-muted)" }}>{h.charges_fournisseurs > 0 ? fmt(h.charges_fournisseurs) : "—"}</td>
-                                <td style={{ textAlign: "right", padding: "9px 10px", fontWeight: 600, color: h.resultat_partiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
-                                  {h.ca_ht > 0 ? fmt(h.resultat_partiel) : "—"}
-                                </td>
-                                <td style={{ textAlign: "right", padding: "9px 10px", color: "var(--text-muted)" }}>{h.invoice_count || "—"}</td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", fontWeight: 600 }}>{fmt(h.charges_fournisseurs)}</td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", color: "var(--text-muted)" }}>{h.charge_count}</td>
                                 <td style={{ textAlign: "right", padding: "9px 0 9px 10px" }}>
-                                  {d ? <span style={{ fontWeight: 600, color: d.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{d.value}</span> : "—"}
+                                  {d ? <span style={{ fontWeight: 600, color: d.positive ? "oklch(0.52 0.085 245)" : "oklch(0.55 0.085 155)" }}>{d.value}</span> : "—"}
                                 </td>
                               </tr>
                             );
@@ -835,7 +830,7 @@ export default function FinancesPage() {
                       </table>
                     </div>
                     <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0" }}>
-                      * En cours · Résultat partiel = CA - charges fournisseurs (hors salaires et amortissements)
+                      * En cours · Hors salaires, charges sociales et amortissements
                     </p>
                   </div>
                 )}
