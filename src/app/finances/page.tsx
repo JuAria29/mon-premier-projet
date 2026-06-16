@@ -3,301 +3,174 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
+import {
+  FISCAL_MONTH_KEYS,
+  FISCAL_MONTH_LABELS,
+  getCurrentFiscalYear,
+} from "@/lib/fiscal";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface FiscalYear { start: string; end: string; label: string; startYear: number; isCurrent: boolean }
 
 interface InterfastStats {
-  exercise_start: string;
-  exercise_end: string;
-  ca_reel: number;
-  ca_previsionnel: number;
-  devis_signes: number;
-  achats: number;
-  retards: number;
-  tva_reel: number;
-  mo_reel: number;
-  fournitures_reel: number;
-  synced_at: string;
+  exercise_start: string; exercise_end: string;
+  ca_reel: number; ca_previsionnel: number; devis_signes: number;
+  achats: number; retards: number; tva_reel: number;
+  mo_reel: number; fournitures_reel: number; synced_at: string;
 }
 
 interface PLInvoice {
-  id: string;
-  date: string;
-  amountHT: number;
-  amountTTC: number;
-  status: string;
-  customerName: string | null;
-  label: string;
+  id: string; date: string; amountHT: number; amountTTC: number;
+  status: string; customerName: string | null; label: string;
 }
 
-interface FinancialObjective {
-  ca_objectif: number | null;
-  marge_objectif: number | null;
+interface PLHistoryEntry {
+  startYear: number; label: string; start: string; end: string; isCurrent: boolean;
+  ca_ht: number; charges_fournisseurs: number; resultat_partiel: number;
+  invoice_count: number; charge_count: number;
+  monthly_ca: Record<string, number>;
+  status_breakdown: Record<string, number>;
 }
 
-interface HistoryEntry {
-  exercise_start: string;
-  exercise_label: string;
-  ca_ht: number | null;
-  masse_salariale: number | null;
-  charges_vehicules: number | null;
-  frais_generaux: number | null;
-  achats_fournitures: number | null;
-  sous_traitance: number | null;
-  charges_totales: number | null;
-  resultat_net: number | null;
-  tresorerie_fin: number | null;
-  effectif: number | null;
+interface FinancialObjective { ca_objectif: number | null; marge_objectif: number | null }
+
+interface ManualHistoryEntry {
+  exercise_start: string; exercise_label: string;
+  ca_ht: number | null; masse_salariale: number | null;
+  charges_vehicules: number | null; frais_generaux: number | null;
+  achats_fournitures: number | null; sous_traitance: number | null;
+  charges_totales: number | null; resultat_net: number | null;
+  tresorerie_fin: number | null; effectif: number | null;
 }
 
-type Section = "vue" | "evolution" | "couts" | "commercial";
+type Tab = "comptabilite" | "activite" | "evolution" | "projection";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(n: number | null | undefined, decimals = 0): string {
+const fmt = (n: number | null | undefined, d = 0) => {
   if (n == null) return "—";
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: decimals,
-  }).format(n);
-}
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(n);
+};
 
-function pct(a: number, b: number): string {
-  if (!b) return "—";
-  return `${Math.round((a / b) * 100)} %`;
-}
+const pct = (a: number, b: number, suffix = " %") =>
+  b > 0 ? `${Math.round((a / b) * 100)}${suffix}` : "—";
 
-function delta(current: number | null, previous: number | null): { value: string; positive: boolean } | null {
-  if (!current || !previous || previous === 0) return null;
-  const d = ((current - previous) / previous) * 100;
+const delta = (cur: number | null, prev: number | null) => {
+  if (!cur || !prev || prev === 0) return null;
+  const d = ((cur - prev) / prev) * 100;
   return { value: `${d > 0 ? "+" : ""}${Math.round(d)} %`, positive: d >= 0 };
-}
+};
 
-const FISCAL_MONTHS = [
-  { key: "2025-10", label: "Oct" },
-  { key: "2025-11", label: "Nov" },
-  { key: "2025-12", label: "Déc" },
-  { key: "2026-01", label: "Jan" },
-  { key: "2026-02", label: "Fév" },
-  { key: "2026-03", label: "Mar" },
-  { key: "2026-04", label: "Avr" },
-  { key: "2026-05", label: "Mai" },
-  { key: "2026-06", label: "Jun" },
-  { key: "2026-07", label: "Jul" },
-  { key: "2026-08", label: "Aoû" },
-  { key: "2026-09", label: "Sep" },
-];
+// ─── UI Atoms ─────────────────────────────────────────────────────────────────
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function KPICard({
-  label,
-  value,
-  sub,
-  accent,
-  warn,
-  delta: d,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: boolean;
-  warn?: boolean;
-  delta?: { value: string; positive: boolean } | null;
+function KPI({ label, value, sub, color, delta: d }: {
+  label: string; value: string; sub?: string;
+  color?: "accent" | "green" | "blue" | "warn"; delta?: { value: string; positive: boolean } | null;
 }) {
+  const c = color === "accent" ? "var(--accent)" : color === "green" ? "oklch(0.55 0.085 155)"
+    : color === "blue" ? "oklch(0.52 0.085 245)" : color === "warn" ? "oklch(0.52 0.085 245)" : "var(--text)";
   return (
-    <div
-      className="card"
-      style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4 }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 800,
-          color: accent
-            ? "var(--accent)"
-            : warn
-            ? "oklch(0.52 0.085 245)"
-            : "var(--text)",
-          lineHeight: 1.1,
-        }}
-      >
-        {value}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {sub && (
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</span>
-        )}
-        {d && (
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: d.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)",
-            }}
-          >
-            {d.value} vs N-1
-          </span>
-        )}
+    <div className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: c, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {sub && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</span>}
+        {d && <span style={{ fontSize: 11, fontWeight: 600, color: d.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{d.value} vs N-1</span>}
       </div>
     </div>
   );
 }
 
-function ProgressBar({
-  value,
-  max,
-  color = "var(--accent)",
-  height = 8,
-}: {
-  value: number;
-  max: number;
-  color?: string;
-  height?: number;
-}) {
+function SourceBadge({ source }: { source: "pennylane" | "interfast" | "manual" }) {
+  const cfg = {
+    pennylane: { label: "Pennylane", color: "#18A999" },
+    interfast: { label: "Interfast", color: "#1e40af" },
+    manual: { label: "Manuel", color: "var(--text-muted)" },
+  }[source];
+  return (
+    <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: `${cfg.color}20`, color: cfg.color }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function Bar({ value, max, color = "var(--accent)", h = 8 }: { value: number; max: number; color?: string; h?: number }) {
   const w = max > 0 ? Math.min(Math.round((value / max) * 100), 100) : 0;
   return (
-    <div
-      style={{
-        height,
-        background: "var(--surface-2)",
-        borderRadius: 999,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          width: `${w}%`,
-          height: "100%",
-          background: color,
-          borderRadius: 999,
-          transition: "width 0.6s ease",
-        }}
-      />
+    <div style={{ height: h, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden" }}>
+      <div style={{ width: `${w}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.5s ease" }} />
     </div>
   );
 }
 
-function CostBar({
-  label,
-  value,
-  total,
-  color,
-}: {
-  label: string;
-  value: number | null;
-  total: number;
-  color: string;
-}) {
+function CostRow({ label, value, total, color }: { label: string; value: number | null; total: number; color: string }) {
   if (!value) return null;
   const w = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div style={{ marginBottom: 10 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 4,
-          alignItems: "baseline",
-        }}
-      >
-        <span style={{ fontSize: 12, color: "var(--text)" }}>{label}</span>
-        <span style={{ fontSize: 12 }}>
-          <strong style={{ color: "var(--text)" }}>{fmt(value)}</strong>{" "}
-          <span style={{ color: "var(--text-muted)" }}>({w} %)</span>
-        </span>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
+        <span style={{ color: "var(--text)" }}>{label}</span>
+        <span><strong>{fmt(value)}</strong> <span style={{ color: "var(--text-muted)" }}>({w} %)</span></span>
       </div>
-      <ProgressBar value={value} max={total} color={color} height={6} />
+      <Bar value={value} max={total} color={color} h={5} />
     </div>
   );
 }
 
-function MonthlyBarChart({ invoices }: { invoices: PLInvoice[] }) {
-  const byMonth: Record<string, number> = {};
-  for (const inv of invoices) {
-    const key = inv.date.slice(0, 7);
-    byMonth[key] = (byMonth[key] || 0) + inv.amountHT;
-  }
+// ─── Charts ───────────────────────────────────────────────────────────────────
 
-  const values = FISCAL_MONTHS.map((m) => byMonth[m.key] ?? 0);
-  const max = Math.max(...values, 1);
+function MonthlyBars({ monthlyCA, startYear }: { monthlyCA: Record<string, number>; startYear: number }) {
+  const keys = FISCAL_MONTH_KEYS(startYear);
+  const vals = keys.map((k) => monthlyCA[k] ?? 0);
+  const max = Math.max(...vals, 1);
   const now = new Date();
   const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: 5,
-        height: 130,
-        padding: "0 2px",
-      }}
-    >
-      {FISCAL_MONTHS.map(({ key, label }, i) => {
-        const val = values[i];
-        const barH = Math.max((val / max) * 100, val > 0 ? 4 : 0);
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120, padding: "0 2px" }}>
+      {keys.map((key, i) => {
+        const val = vals[i];
+        const barH = Math.max((val / max) * 100, val > 0 ? 3 : 0);
         const isCurrent = key === currentKey;
         const isFuture = key > currentKey;
         return (
-          <div
-            key={key}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 3,
-              height: "100%",
-              justifyContent: "flex-end",
-            }}
-          >
-            {val > 0 && (
-              <div
-                style={{
-                  fontSize: 8,
-                  color: isCurrent ? "var(--accent)" : "var(--text-muted)",
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {Math.round(val / 1000)}k
-              </div>
-            )}
-            <div
-              style={{
-                width: "100%",
-                height: `${barH}%`,
-                background: isFuture
-                  ? "var(--border)"
-                  : isCurrent
-                  ? "var(--accent)"
-                  : "color-mix(in srgb, var(--accent) 55%, var(--surface-2))",
-                borderRadius: "3px 3px 0 0",
-                transition: "height 0.5s ease",
-                minHeight: isFuture ? 2 : val > 0 ? 4 : 0,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 9,
-                color: isCurrent ? "var(--accent)" : "var(--text-muted)",
-                fontWeight: isCurrent ? 700 : 400,
-              }}
-            >
-              {label}
+          <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, height: "100%", justifyContent: "flex-end" }}>
+            {val > 0 && <div style={{ fontSize: 7, color: isCurrent ? "var(--accent)" : "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>{Math.round(val / 1000)}k</div>}
+            <div style={{ width: "100%", height: `${barH}%`, borderRadius: "3px 3px 0 0", minHeight: isFuture ? 1 : val > 0 ? 3 : 0,
+              background: isFuture ? "var(--border)" : isCurrent ? "var(--accent)" : "color-mix(in srgb, var(--accent) 60%, var(--surface-2))",
+              transition: "height 0.4s ease" }} />
+            <span style={{ fontSize: 8, color: isCurrent ? "var(--accent)" : "var(--text-muted)", fontWeight: isCurrent ? 700 : 400 }}>{FISCAL_MONTH_LABELS[i]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HistoryBars({ entries, field = "ca_ht" }: {
+  entries: Array<{ label: string; ca_ht?: number; ca_reel?: number; isCurrent?: boolean }>;
+  field?: string;
+}) {
+  const vals = entries.map((e) => (e as unknown as Record<string, number>)[field] ?? 0);
+  const max = Math.max(...vals, 1);
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 150, padding: "0 4px" }}>
+      {entries.map((e, i) => {
+        const val = vals[i];
+        const barH = val > 0 ? Math.max((val / max) * 130, 4) : 0;
+        const prev = i > 0 ? vals[i - 1] : null;
+        const d = delta(val, prev);
+        return (
+          <div key={e.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%", justifyContent: "flex-end" }}>
+            {d && <span style={{ fontSize: 8, fontWeight: 700, whiteSpace: "nowrap", color: d.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{d.value}</span>}
+            {val > 0 && <span style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)" }}>{Math.round(val / 1000)}k€</span>}
+            <div style={{ width: "100%", height: barH, borderRadius: "4px 4px 0 0",
+              background: e.isCurrent ? "var(--accent)" : "color-mix(in srgb, var(--accent) 45%, var(--surface-2))",
+              transition: "height 0.5s ease" }} />
+            <span style={{ fontSize: 9, color: e.isCurrent ? "var(--accent)" : "var(--text-muted)", fontWeight: e.isCurrent ? 700 : 400, textAlign: "center", lineHeight: 1.2 }}>
+              {e.label.replace("-20", "\n'")}
             </span>
           </div>
         );
@@ -306,167 +179,118 @@ function MonthlyBarChart({ invoices }: { invoices: PLInvoice[] }) {
   );
 }
 
-function EvolutionChart({ history, current }: { history: HistoryEntry[]; current: InterfastStats | null }) {
-  const allEntries = [
-    ...history,
-    ...(current
-      ? [
-          {
-            exercise_start: current.exercise_start,
-            exercise_label: "2025-2026*",
-            ca_ht: current.ca_reel,
-            resultat_net: null,
-            masse_salariale: null,
-            charges_vehicules: null,
-            frais_generaux: null,
-            achats_fournitures: null,
-            sous_traitance: null,
-            charges_totales: null,
-            tresorerie_fin: null,
-            effectif: null,
-          },
-        ]
-      : []),
-  ];
+// ─── Estimation logic ─────────────────────────────────────────────────────────
 
-  if (allEntries.length === 0) return null;
+function computeEstimation(
+  plHistory: PLHistoryEntry[],
+  manualHistory: ManualHistoryEntry[],
+  interfastStats: InterfastStats | null,
+  currentYearPL: PLHistoryEntry | null
+) {
+  // Use last 3 complete years for ratios
+  const complete = plHistory.filter((h) => !h.isCurrent && h.ca_ht > 0).slice(-3);
 
-  const maxCA = Math.max(...allEntries.map((e) => e.ca_ht ?? 0), 1);
+  const avgChargeRatio = complete.length
+    ? complete.reduce((s, h) => s + (h.charges_fournisseurs / h.ca_ht), 0) / complete.length
+    : 0.7;
 
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 16, height: 160, padding: "0 4px" }}>
-      {allEntries.map((entry, i) => {
-        const ca = entry.ca_ht ?? 0;
-        const barH = Math.max((ca / maxCA) * 130, ca > 0 ? 4 : 0);
-        const isCurrent = entry.exercise_label.includes("*");
-        const prevCA = i > 0 ? allEntries[i - 1].ca_ht : null;
-        const growth = delta(ca, prevCA);
-        return (
-          <div
-            key={entry.exercise_start}
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-              height: "100%",
-              justifyContent: "flex-end",
-            }}
-          >
-            {growth && (
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: growth.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)",
-                }}
-              >
-                {growth.value}
-              </span>
-            )}
-            {ca > 0 && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)" }}>
-                {Math.round(ca / 1000)}k€
-              </span>
-            )}
-            <div
-              style={{
-                width: "100%",
-                height: barH,
-                background: isCurrent
-                  ? "var(--accent)"
-                  : "color-mix(in srgb, var(--accent) 50%, var(--surface-2))",
-                borderRadius: "4px 4px 0 0",
-                transition: "height 0.5s ease",
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                color: isCurrent ? "var(--accent)" : "var(--text-muted)",
-                fontWeight: isCurrent ? 700 : 400,
-                textAlign: "center",
-              }}
-            >
-              {entry.exercise_label}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
+  // Salary data from manual entries
+  const manualComplete = manualHistory.filter((h) => h.ca_ht && h.masse_salariale);
+  const avgSalaryRatio = manualComplete.length
+    ? manualComplete.reduce((s, h) => s + ((h.masse_salariale ?? 0) / (h.ca_ht ?? 1)), 0) / manualComplete.length
+    : null;
+
+  const projectedCA = interfastStats?.ca_previsionnel ?? currentYearPL?.ca_ht ?? 0;
+  const ytdCA = currentYearPL?.ca_ht ?? 0;
+
+  const estimatedCharges = projectedCA * avgChargeRatio;
+  const estimatedSalaries = avgSalaryRatio ? projectedCA * avgSalaryRatio : null;
+  const estimatedResultPartiel = projectedCA - estimatedCharges;
+  const estimatedResultNet = estimatedSalaries
+    ? projectedCA - estimatedCharges - estimatedSalaries
+    : null;
+
+  // Scenarios
+  const bestRatio = complete.length ? Math.min(...complete.map((h) => h.charges_fournisseurs / h.ca_ht)) : avgChargeRatio * 0.9;
+  const worstRatio = complete.length ? Math.max(...complete.map((h) => h.charges_fournisseurs / h.ca_ht)) : avgChargeRatio * 1.1;
+
+  return {
+    projectedCA,
+    ytdCA,
+    avgChargeRatio,
+    avgSalaryRatio,
+    estimatedCharges,
+    estimatedSalaries,
+    estimatedResultPartiel,
+    estimatedResultNet,
+    optimiste: projectedCA * (1 - bestRatio),
+    realiste: estimatedResultPartiel,
+    prudent: projectedCA * (1 - worstRatio),
+    dataPoints: complete.length,
+  };
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const EMPTY_FORM = {
-  label: "",
-  ca: "",
-  masse_salariale: "",
-  charges_vehicules: "",
-  frais_generaux: "",
-  achats_fournitures: "",
-  sous_traitance: "",
-  charges_totales: "",
-  resultat_net: "",
-  tresorerie_fin: "",
-  effectif: "",
+const EMPTY_HISTORY_FORM = {
+  label: "", ca: "", masse_salariale: "", charges_vehicules: "",
+  frais_generaux: "", achats_fournitures: "", sous_traitance: "",
+  charges_totales: "", resultat_net: "", tresorerie_fin: "", effectif: "",
 };
 
 export default function FinancesPage() {
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState<Section>("vue");
+  const [tab, setTab] = useState<Tab>("comptabilite");
   const [loading, setLoading] = useState(true);
+  const [plLoading, setPlLoading] = useState(false);
+
+  // Dynamic fiscal year — auto-updates on Oct 1 each year
+  const [fy] = useState<FiscalYear>(() => getCurrentFiscalYear());
+
   const [interfastStats, setInterfastStats] = useState<InterfastStats | null>(null);
-  const [plInvoices, setPlInvoices] = useState<PLInvoice[]>([]);
+  const [plCurrentInvoices, setPlCurrentInvoices] = useState<PLInvoice[]>([]);
   const [plConnected, setPlConnected] = useState(false);
+  const [plHistory, setPlHistory] = useState<PLHistoryEntry[]>([]);
   const [objective, setObjective] = useState<FinancialObjective>({ ca_objectif: null, marge_objectif: null });
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [manualHistory, setManualHistory] = useState<ManualHistoryEntry[]>([]);
   const [editObj, setEditObj] = useState(false);
   const [objInput, setObjInput] = useState("");
   const [showAddHistory, setShowAddHistory] = useState(false);
-  const [historyForm, setHistoryForm] = useState(EMPTY_FORM);
+  const [histForm, setHistForm] = useState(EMPTY_HISTORY_FORM);
   const [saving, setSaving] = useState(false);
-  const [deletingKey, setDeletingKey] = useState<string | null>(null);
-
-  const EXERCISE_START = "2025-10-01";
-  const EXERCISE_END = "2026-09-30";
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [iRes, plRes, objRes, histRes] = await Promise.all([
-        fetch(`/api/finances/interfast?exercise_start=${EXERCISE_START}`),
-        fetch(`/api/finances/pennylane/stats?from=${EXERCISE_START}&to=${EXERCISE_END}`),
-        fetch(`/api/finances/objectives?exercise_start=${EXERCISE_START}`),
+      const [iRes, plRes, objRes, manRes] = await Promise.all([
+        fetch(`/api/finances/interfast?exercise_start=${fy.start}`),
+        fetch(`/api/finances/pennylane/stats?from=${fy.start}&to=${fy.end}`),
+        fetch(`/api/finances/objectives?exercise_start=${fy.start}`),
         fetch("/api/finances/history"),
       ]);
-
-      if (iRes.ok) {
-        const d = await iRes.json();
-        setInterfastStats(d.stats ?? null);
-      }
+      if (iRes.ok) { const d = await iRes.json(); setInterfastStats(d.stats ?? null); }
       if (plRes.ok) {
         const d = await plRes.json();
         setPlConnected(d.connected ?? false);
-        setPlInvoices(d.invoices ?? []);
+        setPlCurrentInvoices(d.invoices ?? []);
       }
-      if (objRes.ok) {
-        const d = await objRes.json();
-        setObjective(d);
-        setObjInput(d.ca_objectif ? String(Math.round(d.ca_objectif)) : "");
-      }
-      if (histRes.ok) {
-        const d = await histRes.json();
-        setHistory(Array.isArray(d) ? d : []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (objRes.ok) { const d = await objRes.json(); setObjective(d); setObjInput(d.ca_objectif ? String(Math.round(d.ca_objectif)) : ""); }
+      if (manRes.ok) { const d = await manRes.json(); setManualHistory(Array.isArray(d) ? d : []); }
+    } finally { setLoading(false); }
+  }, [fy]);
+
+  const loadHistory = useCallback(async () => {
+    if (!plConnected || historyLoaded) return;
+    setPlLoading(true);
+    try {
+      const r = await fetch("/api/finances/pennylane/history?since=2018");
+      if (r.ok) { const d = await r.json(); if (d.connected) { setPlHistory(d.history ?? []); setHistoryLoaded(true); } }
+    } finally { setPlLoading(false); }
+  }, [plConnected, historyLoaded]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (tab === "evolution" || tab === "projection") loadHistory(); }, [tab, loadHistory]);
 
   async function saveObjective() {
     setSaving(true);
@@ -474,59 +298,34 @@ export default function FinancesPage() {
       const ca = parseFloat(objInput.replace(/\s/g, "").replace(",", "."));
       if (!isNaN(ca)) {
         await fetch("/api/finances/objectives", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ exercise_start: EXERCISE_START, ca_objectif: ca }),
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ exercise_start: fy.start, ca_objectif: ca }),
         });
         setObjective((p) => ({ ...p, ca_objectif: ca }));
       }
-    } finally {
-      setSaving(false);
-      setEditObj(false);
-    }
+    } finally { setSaving(false); setEditObj(false); }
   }
 
-  async function saveHistory() {
+  async function saveManualHistory() {
     setSaving(true);
     try {
-      const n = (v: string) => (v.trim() ? parseFloat(v.replace(/\s/g, "").replace(",", ".")) || null : null);
+      const n = (v: string) => v.trim() ? parseFloat(v.replace(/\s/g, "").replace(",", ".")) || null : null;
       await fetch("/api/finances/history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          exercise_label: historyForm.label,
-          ca_ht: n(historyForm.ca),
-          masse_salariale: n(historyForm.masse_salariale),
-          charges_vehicules: n(historyForm.charges_vehicules),
-          frais_generaux: n(historyForm.frais_generaux),
-          achats_fournitures: n(historyForm.achats_fournitures),
-          sous_traitance: n(historyForm.sous_traitance),
-          charges_totales: n(historyForm.charges_totales),
-          resultat_net: n(historyForm.resultat_net),
-          tresorerie_fin: n(historyForm.tresorerie_fin),
-          effectif: historyForm.effectif ? parseInt(historyForm.effectif) : null,
+          exercise_label: histForm.label, ca_ht: n(histForm.ca),
+          masse_salariale: n(histForm.masse_salariale), charges_vehicules: n(histForm.charges_vehicules),
+          frais_generaux: n(histForm.frais_generaux), achats_fournitures: n(histForm.achats_fournitures),
+          sous_traitance: n(histForm.sous_traitance), charges_totales: n(histForm.charges_totales),
+          resultat_net: n(histForm.resultat_net), tresorerie_fin: n(histForm.tresorerie_fin),
+          effectif: histForm.effectif ? parseInt(histForm.effectif) : null,
         }),
       });
-      setShowAddHistory(false);
-      setHistoryForm(EMPTY_FORM);
-      load();
-    } finally {
-      setSaving(false);
-    }
+      setShowAddHistory(false); setHistForm(EMPTY_HISTORY_FORM); load();
+    } finally { setSaving(false); }
   }
 
-  async function deleteHistory(exerciseStart: string) {
-    if (!confirm("Supprimer cet exercice ?")) return;
-    setDeletingKey(exerciseStart);
-    try {
-      await fetch(`/api/finances/history?exercise_start=${exerciseStart}`, { method: "DELETE" });
-      load();
-    } finally {
-      setDeletingKey(null);
-    }
-  }
-
-  // ── Computed values ──
+  // ── Computed ────────────────────────────────────────────────────────────────
   const caReel = interfastStats?.ca_reel ?? 0;
   const caPrev = interfastStats?.ca_previsionnel ?? 0;
   const pipeline = interfastStats?.devis_signes ?? 0;
@@ -534,686 +333,516 @@ export default function FinancesPage() {
   const caObj = objective.ca_objectif;
   const objPct = caObj ? Math.min(Math.round((caReel / caObj) * 100), 100) : null;
 
-  const prevYear = history.length > 0 ? history[history.length - 1] : null;
+  const plCurrent = plHistory.find((h) => h.isCurrent) ?? null;
+  const plPaid = plCurrentInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amountHT, 0);
+  const plPending = plCurrentInvoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").reduce((s, i) => s + i.amountHT, 0);
+  const plCaTotal = plCurrentInvoices.reduce((s, i) => s + i.amountHT, 0);
+
+  const prevYear = plHistory.find((h) => h.startYear === fy.startYear - 1);
   const caGrowth = delta(caReel, prevYear?.ca_ht ?? null);
 
-  const plPaid = plInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amountHT, 0);
-  const plPending = plInvoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").reduce((s, i) => s + i.amountHT, 0);
-  const plTotal = plInvoices.reduce((s, i) => s + i.amountHT, 0);
+  const estimation = (plHistory.length > 0 || manualHistory.length > 0)
+    ? computeEstimation(plHistory, manualHistory, interfastStats, plCurrent) : null;
 
-  const tabs: { id: Section; label: string }[] = [
-    { id: "vue", label: "Vue dirigeant" },
-    { id: "evolution", label: "Évolution" },
-    { id: "couts", label: "Structure des coûts" },
-    { id: "commercial", label: "Commercial" },
-  ];
+  // ── Monthly data ────────────────────────────────────────────────────────────
+  const monthlyCA: Record<string, number> = {};
+  for (const inv of plCurrentInvoices) {
+    const k = inv.date.slice(0, 7);
+    monthlyCA[k] = (monthlyCA[k] || 0) + inv.amountHT;
+  }
 
   const inputStyle: React.CSSProperties = {
-    padding: "7px 10px",
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    fontSize: 12,
-    background: "var(--bg)",
-    color: "var(--text)",
-    width: "100%",
-    boxSizing: "border-box",
+    padding: "6px 9px", border: "1px solid var(--border)", borderRadius: 7,
+    fontSize: 12, background: "var(--bg)", color: "var(--text)", width: "100%", boxSizing: "border-box",
   };
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 3, fontWeight: 500 };
 
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11,
-    color: "var(--text-muted)",
-    display: "block",
-    marginBottom: 4,
-    fontWeight: 500,
-  };
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "comptabilite", label: "Comptabilité" },
+    { id: "activite", label: "Activité" },
+    { id: "evolution", label: "Évolution" },
+    { id: "projection", label: "Projection" },
+  ];
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* Header */}
-      <div
-        style={{
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface)",
-          padding: "0 20px",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0 10px" }}>
-          <button
-            onClick={() => router.push("/")}
-            className="btn-ghost"
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 9px", fontSize: 13 }}
-          >
+      <div style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px 10px" }}>
+          <button onClick={() => router.push("/")} className="btn-ghost"
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 9px", fontSize: 13 }}>
             <Icon name="chevron" size={13} style={{ transform: "rotate(180deg)" }} />
             Retour
           </button>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", margin: 0 }}>
-              Pilotage Financier
-            </h1>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Aria Energies · Exercice oct. 2025 – sept. 2026
-            </span>
+          <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <h1 style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", margin: 0 }}>Pilotage Financier</h1>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Aria Energies</span>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginTop: 1 }}>
+              Exercice {fy.label} · {new Date(fy.start).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })} → {new Date(fy.end).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+            </div>
           </div>
           <div style={{ flex: 1 }} />
-          {interfastStats?.synced_at && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Interfast :{" "}
-              {new Date(interfastStats.synced_at).toLocaleDateString("fr-FR", {
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          )}
-          {plConnected && (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "3px 8px",
-                background: "oklch(0.55 0.085 155 / 12%)",
-                color: "oklch(0.55 0.085 155)",
-                borderRadius: 999,
-              }}
-            >
-              Pennylane connecté
-            </span>
-          )}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {plConnected && <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: "#18A99920", color: "#18A999" }}>Pennylane</span>}
+            {interfastStats && <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: "#1e40af20", color: "#1e40af" }}>Interfast</span>}
+          </div>
         </div>
-
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 0, borderTop: "1px solid var(--border)" }}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSection(tab.id)}
-              style={{
-                padding: "8px 16px",
-                fontSize: 13,
-                fontWeight: activeSection === tab.id ? 600 : 400,
-                color: activeSection === tab.id ? "var(--accent)" : "var(--text-muted)",
-                background: "transparent",
-                border: "none",
-                borderBottom: activeSection === tab.id ? "2px solid var(--accent)" : "2px solid transparent",
-                cursor: "pointer",
-                marginBottom: -1,
-              }}
-            >
-              {tab.label}
-            </button>
+        <div style={{ display: "flex", paddingLeft: 20, gap: 0 }}>
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: "8px 16px", fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+              color: tab === t.id ? "var(--accent)" : "var(--text-muted)",
+              background: "transparent", border: "none", cursor: "pointer",
+              borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1,
+            }}>{t.label}</button>
           ))}
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "18px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (
-          <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60 }}>
-            Chargement…
-          </div>
+          <div style={{ textAlign: "center", color: "var(--text-muted)", padding: 60, fontSize: 13 }}>Chargement…</div>
         ) : (
+
           <>
-            {/* ═══ VUE DIRIGEANT ═══════════════════════════════════════════ */}
-            {activeSection === "vue" && (
+            {/* ══ COMPTABILITÉ ════════════════════════════════════════════════ */}
+            {tab === "comptabilite" && (
               <>
-                {/* KPI Row */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                  <KPICard
-                    label="CA Facturé"
-                    value={fmt(caReel)}
-                    sub="Interfast — réel HT"
-                    accent
-                    delta={caGrowth}
-                  />
-                  <KPICard
-                    label="CA Prévisionnel"
-                    value={fmt(caPrev)}
-                    sub="Interfast — total prévu"
-                  />
-                  <KPICard
-                    label="Pipeline signé"
-                    value={fmt(pipeline)}
-                    sub="Devis signés, à facturer"
-                  />
-                  <KPICard
-                    label="Impayés"
-                    value={fmt(retards)}
-                    sub="Retards de paiement"
-                    warn={retards > 0}
-                  />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <SourceBadge source="pennylane" />
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Données comptables Pennylane — factures clients et fournisseurs</span>
                 </div>
 
-                {/* Objectif + jauge */}
-                <div className="card" style={{ padding: "16px 20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                        Objectif CA annuel
-                      </div>
-                      {!editObj && (
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                          {caObj ? `${fmt(caObj)} visé — ${objPct} % réalisé` : "Aucun objectif défini"}
+                {!plConnected ? (
+                  <div className="card" style={{ padding: "24px 20px", textAlign: "center" }}>
+                    <p style={{ margin: "0 0 8px", color: "var(--text-muted)", fontSize: 14 }}>Pennylane non connecté</p>
+                    <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Configurez votre token API dans les Paramètres pour accéder aux données comptables.</p>
+                    <button className="btn-primary" onClick={() => router.push("/settings")} style={{ fontSize: 13, padding: "8px 20px" }}>Configurer Pennylane</button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Objectif CA */}
+                    <div className="card" style={{ padding: "14px 18px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Objectif CA {fy.label}</div>
+                          {!editObj && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{caObj ? `${fmt(caObj)} — ${objPct} % atteint` : "Non défini"}</div>}
                         </div>
+                        {!editObj ? (
+                          <button className="btn-ghost" onClick={() => setEditObj(true)} style={{ fontSize: 12, padding: "4px 10px" }}>
+                            {caObj ? "Modifier" : "Définir"}
+                          </button>
+                        ) : (
+                          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                            <input type="number" value={objInput} onChange={(e) => setObjInput(e.target.value)}
+                              placeholder="600000" autoFocus
+                              style={{ ...inputStyle, width: 120 }}
+                              onKeyDown={(e) => e.key === "Enter" && saveObjective()} />
+                            <button className="btn-primary" onClick={saveObjective} disabled={saving} style={{ fontSize: 12, padding: "5px 12px" }}>OK</button>
+                            <button className="btn-ghost" onClick={() => setEditObj(false)} style={{ fontSize: 12 }}>×</button>
+                          </div>
+                        )}
+                      </div>
+                      {caObj && (
+                        <>
+                          <Bar value={plCaTotal || caReel} max={caObj} color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"} h={10} />
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                            <span>0</span>
+                            <span style={{ fontWeight: 700, color: "var(--accent)" }}>{objPct} %</span>
+                            <span>{fmt(caObj)}</span>
+                          </div>
+                        </>
                       )}
                     </div>
-                    {!editObj ? (
-                      <button className="btn-ghost" onClick={() => setEditObj(true)} style={{ fontSize: 12, padding: "4px 10px" }}>
-                        {caObj ? "Modifier" : "Définir l'objectif"}
-                      </button>
-                    ) : (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="number"
-                          value={objInput}
-                          onChange={(e) => setObjInput(e.target.value)}
-                          placeholder="600000"
-                          style={{ ...inputStyle, width: 130 }}
-                          onKeyDown={(e) => e.key === "Enter" && saveObjective()}
-                          autoFocus
-                        />
-                        <button className="btn-primary" onClick={saveObjective} disabled={saving} style={{ fontSize: 12, padding: "6px 14px" }}>
-                          OK
-                        </button>
-                        <button className="btn-ghost" onClick={() => setEditObj(false)} style={{ fontSize: 12 }}>×</button>
-                      </div>
-                    )}
-                  </div>
-                  {caObj ? (
-                    <div>
-                      <ProgressBar
-                        value={caReel}
-                        max={caObj}
-                        color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"}
-                        height={12}
-                      />
-                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                          {fmt(caReel)} réalisé
-                        </span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>
-                          {objPct} %
-                        </span>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                          Objectif : {fmt(caObj)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ height: 12, background: "var(--surface-2)", borderRadius: 999 }} />
-                  )}
-                </div>
 
-                {/* Middle row */}
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-                  {/* CA mensuel */}
-                  <div className="card" style={{ padding: "16px 20px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                        CA mensuel — exercice en cours
-                      </div>
-                      <span style={{ fontSize: 11, color: plConnected ? "var(--text-muted)" : "var(--accent)" }}>
-                        {plConnected ? "Source : Pennylane" : "Connectez Pennylane"}
-                      </span>
+                    {/* KPI Pennylane */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                      <KPI label="CA facturé HT" value={fmt(plCaTotal)} sub="Factures émises" color="accent" delta={caGrowth} />
+                      <KPI label="Encaissé" value={fmt(plPaid)} sub="Factures payées" color="green" />
+                      <KPI label="En attente" value={fmt(plPending)} sub="Non soldé" color={plPending > 0 ? "warn" : undefined} />
+                      <KPI label="TVA collectée" value={fmt(interfastStats?.tva_reel)} sub="Interfast" />
                     </div>
-                    {plConnected ? (
-                      <MonthlyBarChart invoices={plInvoices} />
-                    ) : (
-                      <div style={{
-                        height: 130,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "var(--surface-2)",
-                        borderRadius: 10,
-                        color: "var(--text-muted)",
-                        fontSize: 12,
-                        textAlign: "center",
-                        padding: 16,
-                      }}>
-                        Ajoutez <code style={{ background: "var(--border)", borderRadius: 4, padding: "1px 5px", margin: "0 4px" }}>PENNYLANE_API_TOKEN</code> dans .env.local pour voir l&apos;évolution mensuelle
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Répartition Interfast */}
-                  <div className="card" style={{ padding: "16px 20px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 14 }}>
-                      Répartition du CA
+                    {/* CA mensuel */}
+                    <div className="card" style={{ padding: "16px 18px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>CA mensuel — {fy.label}</div>
+                        <SourceBadge source="pennylane" />
+                      </div>
+                      <MonthlyBars monthlyCA={monthlyCA} startYear={fy.startYear} />
                     </div>
-                    {interfastStats ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                        <CostBar label="Main d'œuvre" value={interfastStats.mo_reel} total={caReel} color="var(--accent)" />
-                        <CostBar label="Fournitures" value={interfastStats.fournitures_reel} total={caReel} color="oklch(0.52 0.1 295)" />
-                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Solde TVA collectée</span>
-                            <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(interfastStats.tva_reel)}</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Ratio MO / CA</span>
-                            <span style={{ fontSize: 12, fontWeight: 600 }}>
-                              {pct(interfastStats.mo_reel, caReel)}
-                            </span>
+
+                    {/* Charges fournisseurs */}
+                    <div className="card" style={{ padding: "16px 18px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Charges fournisseurs</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                            Note : hors charges de personnel (non dans Pennylane)
                           </div>
                         </div>
+                        <SourceBadge source="pennylane" />
                       </div>
-                    ) : (
-                      <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Aucune donnée Interfast</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Pennylane detail */}
-                {plConnected && plInvoices.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                    <KPICard label="CA Pennylane émis" value={fmt(plTotal)} sub="Factures HT" />
-                    <KPICard label="Encaissé" value={fmt(plPaid)} sub="Factures payées" accent />
-                    <KPICard label="En attente de paiement" value={fmt(plPending)} sub="Factures non soldées" warn={plPending > 0} />
-                  </div>
+                      {plCurrent ? (
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Total charges fournisseurs</span>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(plCurrent.charges_fournisseurs)}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Résultat partiel (CA - fournisseurs)</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: plCurrent.resultat_partiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
+                              {fmt(plCurrent.resultat_partiel)}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0", padding: "8px 10px", background: "var(--surface-2)", borderRadius: 8 }}>
+                            Ce résultat est partiel : il ne tient pas compte des salaires, charges sociales et amortissements. Utilisez l'onglet Projection pour une estimation complète.
+                          </p>
+                        </div>
+                      ) : (
+                        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Chargement de l'historique Pennylane…</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             )}
 
-            {/* ═══ ÉVOLUTION ════════════════════════════════════════════════ */}
-            {activeSection === "evolution" && (
+            {/* ══ ACTIVITÉ ════════════════════════════════════════════════════ */}
+            {tab === "activite" && (
               <>
-                <div className="card" style={{ padding: "16px 20px" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                    Évolution du CA depuis la création
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <SourceBadge source="interfast" />
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pilotage de l'activité — devis, interventions, facturation</span>
+                </div>
+
+                {!interfastStats ? (
+                  <div className="card" style={{ padding: "24px 20px", textAlign: "center" }}>
+                    <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Données Interfast non synchronisées — demandez une synchronisation à Aria.</p>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-                    Ajoutez vos bilans des exercices précédents pour voir la courbe complète.
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                      <KPI label="CA Réalisé" value={fmt(caReel)} sub="Chantiers facturés HT" color="accent" />
+                      <KPI label="CA Prévisionnel" value={fmt(caPrev)} sub="Total exercice estimé" />
+                      <KPI label="Reste à facturer" value={fmt(caPrev - caReel)} sub="En cours + prévu" />
+                      <KPI label="Pipeline signé" value={fmt(pipeline)} sub="Devis signés, à planifier" color="blue" />
+                      <KPI label="Impayés" value={fmt(retards)} sub="Retards de paiement" color={retards > 0 ? "warn" : undefined} />
+                      <KPI label="Achats matériaux" value={fmt(interfastStats.achats)} sub="Valeur achats Interfast" />
+                    </div>
+
+                    {/* Répartition */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div className="card" style={{ padding: "16px 18px" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Répartition du CA réalisé</div>
+                        <CostRow label="Main d'œuvre" value={interfastStats.mo_reel} total={caReel} color="var(--accent)" />
+                        <CostRow label="Fournitures" value={interfastStats.fournitures_reel} total={caReel} color="oklch(0.52 0.1 295)" />
+                        <div style={{ paddingTop: 10, borderTop: "1px solid var(--border)", marginTop: 4 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                            <span style={{ color: "var(--text-muted)" }}>Ratio MO / CA</span>
+                            <strong>{pct(interfastStats.mo_reel, caReel)}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="card" style={{ padding: "16px 18px" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Indicateurs activité</div>
+                        {[
+                          { label: "Taux réalisation CA", value: pct(caReel, caPrev) },
+                          { label: "Pipeline / CA réalisé", value: pct(pipeline, caReel) },
+                          { label: "Impayés / CA réalisé", value: pct(retards, caReel) },
+                          { label: "Achats / CA prévisionnel", value: pct(interfastStats.achats, caPrev) },
+                          { label: "TVA collectée", value: fmt(interfastStats.tva_reel) },
+                        ].map(({ label, value }) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                            <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                            <strong>{value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {interfastStats.synced_at && (
+                      <p style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>
+                        Dernière synchro Interfast : {new Date(interfastStats.synced_at).toLocaleString("fr-FR")}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ══ ÉVOLUTION ════════════════════════════════════════════════════ */}
+            {tab === "evolution" && (
+              <>
+                {/* Pennylane history chart */}
+                <div className="card" style={{ padding: "16px 18px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>CA par exercice — depuis 2018</div>
+                    <SourceBadge source="pennylane" />
                   </div>
-                  {(history.length > 0 || interfastStats) ? (
-                    <EvolutionChart history={history} current={interfastStats} />
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
+                    Factures clients Pennylane — exercices oct → sept
+                  </div>
+                  {plLoading ? (
+                    <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                      Chargement de l'historique Pennylane…
+                    </div>
+                  ) : plHistory.length > 0 ? (
+                    <HistoryBars entries={plHistory.map((h) => ({ label: h.label, ca_ht: h.ca_ht, isCurrent: h.isCurrent }))} />
                   ) : (
-                    <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2)", borderRadius: 10, color: "var(--text-muted)", fontSize: 12 }}>
-                      Aucun historique — ajoutez vos exercices précédents ci-dessous
+                    <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface-2)", borderRadius: 10, color: "var(--text-muted)", fontSize: 12 }}>
+                      {plConnected ? "Aucune donnée Pennylane disponible pour cette période" : "Connectez Pennylane pour voir l'historique"}
                     </div>
                   )}
                 </div>
 
-                {/* Tableau comparatif */}
-                <div className="card" style={{ padding: "16px 20px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                      Bilan par exercice
+                {/* Pennylane detail table */}
+                {plHistory.length > 0 && (
+                  <div className="card" style={{ padding: "16px 18px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Détail comptable par exercice</div>
+                      <SourceBadge source="pennylane" />
                     </div>
-                    <button
-                      className="btn-ghost"
-                      onClick={() => setShowAddHistory((v) => !v)}
-                      style={{ fontSize: 12, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}
-                    >
-                      <Icon name="plus" size={12} />
-                      Ajouter un exercice
-                    </button>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ color: "var(--text-muted)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            <th style={{ textAlign: "left", padding: "0 10px 8px 0" }}>Exercice</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>CA HT</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Charges fourn.</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Résultat partiel</th>
+                            <th style={{ textAlign: "right", padding: "0 10px 8px" }}>Factures</th>
+                            <th style={{ textAlign: "right", padding: "0 0 8px 10px" }}>Évolution CA</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plHistory.map((h, i) => {
+                            const prev = i > 0 ? plHistory[i - 1] : null;
+                            const d = delta(h.ca_ht, prev?.ca_ht ?? null);
+                            return (
+                              <tr key={h.label} style={{ borderTop: "1px solid var(--border)", background: h.isCurrent ? "var(--accent-soft)" : "transparent" }}>
+                                <td style={{ padding: "9px 10px 9px 0", fontWeight: h.isCurrent ? 700 : 500, color: h.isCurrent ? "var(--accent)" : "var(--text)" }}>
+                                  {h.label}{h.isCurrent ? " *" : ""}
+                                </td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", fontWeight: 600 }}>{h.ca_ht > 0 ? fmt(h.ca_ht) : "—"}</td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", color: "var(--text-muted)" }}>{h.charges_fournisseurs > 0 ? fmt(h.charges_fournisseurs) : "—"}</td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", fontWeight: 600, color: h.resultat_partiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
+                                  {h.ca_ht > 0 ? fmt(h.resultat_partiel) : "—"}
+                                </td>
+                                <td style={{ textAlign: "right", padding: "9px 10px", color: "var(--text-muted)" }}>{h.invoice_count || "—"}</td>
+                                <td style={{ textAlign: "right", padding: "9px 0 9px 10px" }}>
+                                  {d ? <span style={{ fontWeight: 600, color: d.positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{d.value}</span> : "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0" }}>
+                      * En cours · Résultat partiel = CA - charges fournisseurs (hors salaires et amortissements)
+                    </p>
+                  </div>
+                )}
+
+                {/* Manual history (bilans complets) */}
+                <div className="card" style={{ padding: "16px 18px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Bilans complets</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Données issues de vos bilans annuels (salaires, résultat net, trésorerie)</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <SourceBadge source="manual" />
+                      <button className="btn-ghost" onClick={() => setShowAddHistory((v) => !v)} style={{ fontSize: 12, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}>
+                        <Icon name="plus" size={12} /> Ajouter
+                      </button>
+                    </div>
                   </div>
 
                   {showAddHistory && (
-                    <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: 14, marginBottom: 16 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
-                        Nouvel exercice
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-                        <div>
-                          <label style={labelStyle}>Exercice *</label>
-                          <input value={historyForm.label} onChange={(e) => setHistoryForm((p) => ({ ...p, label: e.target.value }))} placeholder="ex: 2024-2025" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>CA HT (€)</label>
-                          <input type="number" value={historyForm.ca} onChange={(e) => setHistoryForm((p) => ({ ...p, ca: e.target.value }))} placeholder="450000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Résultat net (€)</label>
-                          <input type="number" value={historyForm.resultat_net} onChange={(e) => setHistoryForm((p) => ({ ...p, resultat_net: e.target.value }))} placeholder="35000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Masse salariale (€)</label>
-                          <input type="number" value={historyForm.masse_salariale} onChange={(e) => setHistoryForm((p) => ({ ...p, masse_salariale: e.target.value }))} placeholder="180000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Frais de véhicules (€)</label>
-                          <input type="number" value={historyForm.charges_vehicules} onChange={(e) => setHistoryForm((p) => ({ ...p, charges_vehicules: e.target.value }))} placeholder="25000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Frais généraux (€)</label>
-                          <input type="number" value={historyForm.frais_generaux} onChange={(e) => setHistoryForm((p) => ({ ...p, frais_generaux: e.target.value }))} placeholder="40000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Achats / fournitures (€)</label>
-                          <input type="number" value={historyForm.achats_fournitures} onChange={(e) => setHistoryForm((p) => ({ ...p, achats_fournitures: e.target.value }))} placeholder="200000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Sous-traitance (€)</label>
-                          <input type="number" value={historyForm.sous_traitance} onChange={(e) => setHistoryForm((p) => ({ ...p, sous_traitance: e.target.value }))} placeholder="0" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Total charges (€)</label>
-                          <input type="number" value={historyForm.charges_totales} onChange={(e) => setHistoryForm((p) => ({ ...p, charges_totales: e.target.value }))} placeholder="420000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Trésorerie fin d'ex. (€)</label>
-                          <input type="number" value={historyForm.tresorerie_fin} onChange={(e) => setHistoryForm((p) => ({ ...p, tresorerie_fin: e.target.value }))} placeholder="50000" style={inputStyle} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Effectif (ETP)</label>
-                          <input type="number" value={historyForm.effectif} onChange={(e) => setHistoryForm((p) => ({ ...p, effectif: e.target.value }))} placeholder="8" style={inputStyle} />
-                        </div>
+                    <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+                        {[
+                          { key: "label", label: "Exercice *", placeholder: "2024-2025" },
+                          { key: "ca", label: "CA HT (€)", placeholder: "450000" },
+                          { key: "masse_salariale", label: "Masse salariale (€)", placeholder: "180000" },
+                          { key: "charges_vehicules", label: "Frais véhicules (€)", placeholder: "25000" },
+                          { key: "frais_generaux", label: "Frais généraux (€)", placeholder: "40000" },
+                          { key: "achats_fournitures", label: "Achats/fournitures (€)", placeholder: "200000" },
+                          { key: "sous_traitance", label: "Sous-traitance (€)", placeholder: "0" },
+                          { key: "charges_totales", label: "Total charges (€)", placeholder: "420000" },
+                          { key: "resultat_net", label: "Résultat net (€)", placeholder: "35000" },
+                          { key: "tresorerie_fin", label: "Trésorerie fin ex. (€)", placeholder: "50000" },
+                          { key: "effectif", label: "Effectif (ETP)", placeholder: "8" },
+                        ].map(({ key, label, placeholder }) => (
+                          <div key={key}>
+                            <label style={labelStyle}>{label}</label>
+                            <input value={(histForm as Record<string, string>)[key]} placeholder={placeholder}
+                              type={key === "label" ? "text" : "number"}
+                              onChange={(e) => setHistForm((p) => ({ ...p, [key]: e.target.value }))}
+                              style={inputStyle} />
+                          </div>
+                        ))}
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn-primary" onClick={saveHistory} disabled={saving || !historyForm.label} style={{ fontSize: 12, padding: "7px 16px" }}>
-                          {saving ? "Enregistrement…" : "Enregistrer"}
+                        <button className="btn-primary" onClick={saveManualHistory} disabled={saving || !histForm.label} style={{ fontSize: 12, padding: "7px 16px" }}>
+                          {saving ? "…" : "Enregistrer"}
                         </button>
                         <button className="btn-ghost" onClick={() => setShowAddHistory(false)} style={{ fontSize: 12 }}>Annuler</button>
                       </div>
                     </div>
                   )}
 
-                  {history.length === 0 && !interfastStats ? (
-                    <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Aucun historique — ajoutez vos bilans précédents.</p>
+                  {manualHistory.length === 0 ? (
+                    <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                      Aucun bilan saisi — ajoutez vos exercices depuis 2018 pour enrichir les projections.
+                    </p>
                   ) : (
                     <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 700 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead>
                           <tr style={{ color: "var(--text-muted)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            <th style={{ textAlign: "left", padding: "0 10px 8px 0", whiteSpace: "nowrap" }}>Exercice</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>CA HT</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Masse sal.</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Véhicules</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Frais gén.</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Achats</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Résultat net</th>
-                            <th style={{ textAlign: "right", padding: "0 10px 8px", whiteSpace: "nowrap" }}>Trésorerie</th>
-                            <th style={{ textAlign: "right", padding: "0 0 8px 8px", whiteSpace: "nowrap" }}>ETP</th>
-                            <th style={{ width: 32 }} />
+                            {["Exercice", "CA HT", "Masse sal.", "Véhicules", "Frais gén.", "Total charges", "Résultat net", "Trésorerie", "ETP"].map((h) => (
+                              <th key={h} style={{ textAlign: h === "Exercice" ? "left" : "right", padding: "0 8px 8px", whiteSpace: "nowrap" }}>{h}</th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {history.map((h) => (
+                          {manualHistory.map((h) => (
                             <tr key={h.exercise_start} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ padding: "10px 10px 10px 0", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>{h.exercise_label}</td>
-                              <td style={{ textAlign: "right", padding: "10px", fontWeight: 600 }}>{fmt(h.ca_ht)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>{fmt(h.masse_salariale)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>{fmt(h.charges_vehicules)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>{fmt(h.frais_generaux)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>{fmt(h.achats_fournitures)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", fontWeight: 600, color: h.resultat_net && h.resultat_net >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
+                              <td style={{ padding: "8px 8px 8px 0", fontWeight: 600 }}>{h.exercise_label}</td>
+                              <td style={{ textAlign: "right", padding: "8px", fontWeight: 600 }}>{fmt(h.ca_ht)}</td>
+                              <td style={{ textAlign: "right", padding: "8px", color: "var(--text-muted)" }}>{fmt(h.masse_salariale)}</td>
+                              <td style={{ textAlign: "right", padding: "8px", color: "var(--text-muted)" }}>{fmt(h.charges_vehicules)}</td>
+                              <td style={{ textAlign: "right", padding: "8px", color: "var(--text-muted)" }}>{fmt(h.frais_generaux)}</td>
+                              <td style={{ textAlign: "right", padding: "8px", color: "var(--text-muted)" }}>{fmt(h.charges_totales)}</td>
+                              <td style={{ textAlign: "right", padding: "8px", fontWeight: 600, color: (h.resultat_net ?? 0) >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
                                 {fmt(h.resultat_net)}
                               </td>
-                              <td style={{ textAlign: "right", padding: "10px" }}>{fmt(h.tresorerie_fin)}</td>
-                              <td style={{ textAlign: "right", padding: "10px 0 10px 8px", color: "var(--text-muted)" }}>{h.effectif ?? "—"}</td>
-                              <td style={{ textAlign: "right", padding: "10px 0" }}>
-                                <button
-                                  onClick={() => deleteHistory(h.exercise_start)}
-                                  disabled={deletingKey === h.exercise_start}
-                                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
-                                >
-                                  <Icon name="close" size={12} />
-                                </button>
-                              </td>
+                              <td style={{ textAlign: "right", padding: "8px" }}>{fmt(h.tresorerie_fin)}</td>
+                              <td style={{ textAlign: "right", padding: "8px 0" }}>{h.effectif ?? "—"}</td>
                             </tr>
                           ))}
-                          {/* Exercice en cours */}
-                          {interfastStats && (
-                            <tr style={{ borderTop: "1px solid var(--border)", background: "var(--accent-soft)" }}>
-                              <td style={{ padding: "10px 10px 10px 0", fontWeight: 700, color: "var(--accent)" }}>2025-2026 *</td>
-                              <td style={{ textAlign: "right", padding: "10px", fontWeight: 700, color: "var(--accent)" }}>{fmt(caReel)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>—</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>—</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>—</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>{fmt(interfastStats.achats)}</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>—</td>
-                              <td style={{ textAlign: "right", padding: "10px", color: "var(--text-muted)" }}>—</td>
-                              <td style={{ textAlign: "right", padding: "10px 0", color: "var(--text-muted)" }}>—</td>
-                              <td />
-                            </tr>
-                          )}
                         </tbody>
                       </table>
-                      {interfastStats && (
-                        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0" }}>
-                          * Exercice en cours — données Interfast temps réel, charges à renseigner en fin d&apos;exercice
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
               </>
             )}
 
-            {/* ═══ STRUCTURE DES COÛTS ═════════════════════════════════════ */}
-            {activeSection === "couts" && (
+            {/* ══ PROJECTION ══════════════════════════════════════════════════ */}
+            {tab === "projection" && (
               <>
-                {prevYear ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    {/* Dernier bilan complet */}
-                    <div className="card" style={{ padding: "16px 20px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                        Structure des charges — {prevYear.exercise_label}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
-                        Dernier exercice complet disponible
-                      </div>
-                      {(() => {
-                        const total = prevYear.charges_totales ?? (
-                          (prevYear.masse_salariale ?? 0) +
-                          (prevYear.charges_vehicules ?? 0) +
-                          (prevYear.frais_generaux ?? 0) +
-                          (prevYear.achats_fournitures ?? 0) +
-                          (prevYear.sous_traitance ?? 0)
-                        );
-                        return (
-                          <div>
-                            <CostBar label="Masse salariale" value={prevYear.masse_salariale} total={total} color="var(--accent)" />
-                            <CostBar label="Achats / fournitures" value={prevYear.achats_fournitures} total={total} color="oklch(0.52 0.1 295)" />
-                            <CostBar label="Frais généraux" value={prevYear.frais_generaux} total={total} color="oklch(0.52 0.085 245)" />
-                            <CostBar label="Frais de véhicules" value={prevYear.charges_vehicules} total={total} color="oklch(0.55 0.085 155)" />
-                            <CostBar label="Sous-traitance" value={prevYear.sous_traitance} total={total} color="oklch(0.52 0.1 30)" />
-                            {total > 0 && (
-                              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Total charges</span>
-                                  <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(total)}</span>
-                                </div>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Ratio charges / CA</span>
-                                  <span style={{ fontSize: 12, fontWeight: 600 }}>{pct(total, prevYear.ca_ht ?? 0)}</span>
-                                </div>
-                                {prevYear.effectif && (
-                                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>CA / collaborateur</span>
-                                    <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt((prevYear.ca_ht ?? 0) / prevYear.effectif)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Indicateurs de rentabilité */}
-                    <div className="card" style={{ padding: "16px 20px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 14 }}>
-                        Indicateurs de rentabilité
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {[
-                          { label: "CA HT", value: fmt(prevYear.ca_ht), highlight: false },
-                          { label: "Total charges", value: fmt(prevYear.charges_totales), highlight: false },
-                          {
-                            label: "Résultat net",
-                            value: fmt(prevYear.resultat_net),
-                            highlight: true,
-                            positive: (prevYear.resultat_net ?? 0) >= 0,
-                          },
-                          {
-                            label: "Taux de résultat",
-                            value: prevYear.ca_ht && prevYear.resultat_net != null ? pct(prevYear.resultat_net, prevYear.ca_ht) : "—",
-                            highlight: false,
-                          },
-                          { label: "Trésorerie fin d'ex.", value: fmt(prevYear.tresorerie_fin), highlight: false },
-                          {
-                            label: "Masse sal. / CA",
-                            value: prevYear.ca_ht && prevYear.masse_salariale ? pct(prevYear.masse_salariale, prevYear.ca_ht) : "—",
-                            highlight: false,
-                          },
-                        ].map(({ label, value, highlight, positive }) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
-                            <span style={{
-                              fontSize: 13,
-                              fontWeight: highlight ? 700 : 500,
-                              color: highlight
-                                ? (positive ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)")
-                                : "var(--text)",
-                            }}>
-                              {value}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="card" style={{ padding: "32px 20px", textAlign: "center" }}>
-                    <Icon name="chart" size={32} style={{ color: "var(--text-muted)", marginBottom: 12 }} />
-                    <p style={{ color: "var(--text-muted)", margin: "0 0 8px", fontSize: 14 }}>Aucun bilan historique disponible</p>
-                    <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                      Allez dans l'onglet <strong>Évolution</strong> pour ajouter vos exercices précédents.
-                    </p>
-                  </div>
-                )}
-
-                {/* Current year Interfast breakdown */}
-                {interfastStats && (
-                  <div className="card" style={{ padding: "16px 20px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                      Exercice 2025-2026 — Ventilation Interfast
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
-                      Données temps réel depuis Interfast — les charges comptables seront disponibles via Pennylane
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div>
-                        <CostBar label="Main d'œuvre (facturée)" value={interfastStats.mo_reel} total={caReel} color="var(--accent)" />
-                        <CostBar label="Fournitures (facturées)" value={interfastStats.fournitures_reel} total={caReel} color="oklch(0.52 0.1 295)" />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Achats Interfast</span>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(interfastStats.achats)}</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>CA Prévisionnel restant</span>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(caPrev - caReel)}</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pipeline (devis signés)</span>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(pipeline)}</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Solde TVA</span>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(interfastStats.tva_reel)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ═══ COMMERCIAL ══════════════════════════════════════════════ */}
-            {activeSection === "commercial" && (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                  <KPICard
-                    label="CA Facturé"
-                    value={fmt(caReel)}
-                    sub="Réalisé HT"
-                    accent
-                  />
-                  <KPICard
-                    label="CA Prévisionnel"
-                    value={fmt(caPrev)}
-                    sub="En cours + à venir"
-                  />
-                  <KPICard
-                    label="Écart prév. / réalisé"
-                    value={fmt(caPrev - caReel)}
-                    sub="Reste à facturer"
-                  />
-                  <KPICard
-                    label="Devis signés (pipeline)"
-                    value={fmt(pipeline)}
-                    sub="À facturer prochainement"
-                  />
-                  <KPICard
-                    label="Impayés"
-                    value={fmt(retards)}
-                    sub="Retards de règlement"
-                    warn={retards > 0}
-                  />
-                  <KPICard
-                    label="Achats matériaux"
-                    value={fmt(interfastStats?.achats)}
-                    sub="Valeur devis (Interfast)"
-                  />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent)" }}>Estimation</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Projection résultat exercice {fy.label} · basée sur historique + données temps réel</span>
                 </div>
 
-                {interfastStats && (
-                  <div className="card" style={{ padding: "16px 20px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 14 }}>
-                      Analyse commerciale — exercice en cours
+                {plLoading ? (
+                  <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Chargement de l'historique…</div>
+                ) : estimation ? (
+                  <>
+                    {/* Méthodologie */}
+                    <div style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 10, fontSize: 12, color: "var(--text-muted)", border: "1px solid color-mix(in srgb, var(--accent) 20%, transparent)" }}>
+                      <strong style={{ color: "var(--accent)" }}>Méthode :</strong> Projection basée sur {estimation.dataPoints} exercice(s) complet(s).
+                      Ratio charges fournisseurs historique : {Math.round(estimation.avgChargeRatio * 100)} % du CA.
+                      {estimation.avgSalaryRatio ? ` Ratio masse salariale : ${Math.round(estimation.avgSalaryRatio * 100)} %.` : " Masse salariale : renseignez vos bilans historiques pour affiner."}
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                          Production
-                        </div>
-                        {[
-                          { label: "Main d'œuvre facturée", value: fmt(interfastStats.mo_reel) },
-                          { label: "Part MO dans CA", value: pct(interfastStats.mo_reel, caReel) },
-                          { label: "Fournitures facturées", value: fmt(interfastStats.fournitures_reel) },
-                          { label: "Part fournitures dans CA", value: pct(interfastStats.fournitures_reel, caReel) },
-                        ].map(({ label, value }) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                          Facturation
-                        </div>
-                        {[
-                          { label: "TVA collectée", value: fmt(interfastStats.tva_reel) },
-                          { label: "CA réalisé / prévisionnel", value: `${Math.round((caReel / caPrev) * 100)} %` },
-                          { label: "Impayés / CA réalisé", value: pct(retards, caReel) },
-                          { label: "Pipeline / CA réalisé", value: pct(pipeline, caReel) },
-                        ].map(({ label, value }) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
-                {!interfastStats && (
+                    {/* CA projeté */}
+                    <div className="card" style={{ padding: "14px 18px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Base de projection — CA exercice {fy.label}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                        <div style={{ padding: "12px 14px", background: "var(--surface-2)", borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 4 }}>CA prévisionnel</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)" }}>{fmt(caPrev)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Source Interfast</div>
+                        </div>
+                        <div style={{ padding: "12px 14px", background: "var(--surface-2)", borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 4 }}>CA facturé YTD</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{fmt(plCaTotal || caReel)}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Source {plConnected ? "Pennylane" : "Interfast"}</div>
+                        </div>
+                        <div style={{ padding: "12px 14px", background: "var(--surface-2)", borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: 4 }}>Reste à facturer</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{fmt(caPrev - (plCaTotal || caReel))}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Prévisionnel - facturé</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3 scénarios */}
+                    <div className="card" style={{ padding: "14px 18px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Estimation du résultat — 3 scénarios</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                        {[
+                          { label: "Prudent", value: estimation.prudent, desc: "Ratio charges le plus élevé de l'historique", color: "oklch(0.52 0.085 245)" },
+                          { label: "Réaliste", value: estimation.realiste, desc: "Ratio moyen des 3 derniers exercices", color: "var(--accent)" },
+                          { label: "Optimiste", value: estimation.optimiste, desc: "Ratio charges le plus faible de l'historique", color: "oklch(0.55 0.085 155)" },
+                        ].map(({ label, value, desc, color }) => (
+                          <div key={label} style={{ padding: "14px 16px", background: "var(--surface-2)", borderRadius: 12, border: label === "Réaliste" ? "2px solid var(--accent)" : "1px solid var(--border)" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color, marginBottom: 6 }}>{label}</div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color }}>{fmt(value)}</div>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>{desc}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {estimation.estimatedSalaries && (
+                        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: "var(--text)" }}>Détail estimé (scénario réaliste)</div>
+                          {[
+                            { label: "CA prévisionnel", value: caPrev, color: "oklch(0.55 0.085 155)" },
+                            { label: "- Charges fournisseurs estimées", value: -estimation.estimatedCharges, color: "var(--text)" },
+                            { label: "- Masse salariale estimée", value: -estimation.estimatedSalaries, color: "var(--text)" },
+                            { label: "= Résultat net estimé", value: estimation.estimatedResultNet, color: (estimation.estimatedResultNet ?? 0) >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" },
+                          ].map(({ label, value, color }) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                              <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                              <strong style={{ color }}>{fmt(value)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!estimation.estimatedSalaries && (
+                        <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 12, padding: "8px 10px", background: "var(--surface-2)", borderRadius: 8 }}>
+                          Pour affiner la projection avec la masse salariale, ajoutez vos bilans historiques dans l'onglet Évolution.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Prochaine transition */}
+                    <div className="card" style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon name="calendar" size={16} style={{ color: "var(--accent)" }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+                          Prochain changement d'exercice : 1er octobre {fy.startYear + 1}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                          À cette date, le dashboard basculera automatiquement sur l'exercice {fy.startYear + 1}-{fy.startYear + 2}.
+                          L'exercice {fy.label} passera dans l'historique.
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                        {Math.ceil((new Date(`${fy.startYear + 1}-10-01`).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} jours
+                      </div>
+                    </div>
+                  </>
+                ) : (
                   <div className="card" style={{ padding: "32px 20px", textAlign: "center" }}>
-                    <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                      Aucune donnée Interfast synchronisée. Demandez à Aria de synchroniser les données.
+                    <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>Données insuffisantes pour une projection</p>
+                    <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                      Connectez Pennylane ou ajoutez des bilans historiques dans l'onglet Évolution.
                     </p>
                   </div>
                 )}
