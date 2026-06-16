@@ -249,6 +249,7 @@ export default function FinancesPage() {
 
   const [interfastStats, setInterfastStats] = useState<InterfastStats | null>(null);
   const [plCurrentInvoices, setPlCurrentInvoices] = useState<PLInvoice[]>([]);
+  const [plCurrentCharges, setPlCurrentCharges] = useState<PLInvoice[]>([]);
   const [plConnected, setPlConnected] = useState(false);
   const [plHistory, setPlHistory] = useState<PLHistoryEntry[]>([]);
   const [objective, setObjective] = useState<FinancialObjective>({ ca_objectif: null, marge_objectif: null });
@@ -274,6 +275,7 @@ export default function FinancesPage() {
         const d = await plRes.json();
         setPlConnected(d.connected ?? false);
         setPlCurrentInvoices(d.invoices ?? []);
+        setPlCurrentCharges(d.charges ?? []);
       }
       if (objRes.ok) { const d = await objRes.json(); setObjective(d); setObjInput(d.ca_objectif ? String(Math.round(d.ca_objectif)) : ""); }
       if (manRes.ok) { const d = await manRes.json(); setManualHistory(Array.isArray(d) ? d : []); }
@@ -337,6 +339,34 @@ export default function FinancesPage() {
   const plPaid = plCurrentInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amountHT, 0);
   const plPending = plCurrentInvoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").reduce((s, i) => s + i.amountHT, 0);
   const plCaTotal = plCurrentInvoices.reduce((s, i) => s + i.amountHT, 0);
+
+  // Charges fournisseurs depuis Pennylane (supplier invoices V2 — montants absolus)
+  const plChargesTotal = plCurrentCharges.reduce((s, i) => s + Math.abs(i.amountHT), 0);
+  const plChargesCount = plCurrentCharges.length;
+  // Avoirs (montants négatifs) = retours / corrections fournisseurs
+  const plAvoirsTotal = plCurrentCharges.filter(i => i.amountHT < 0).reduce((s, i) => s + Math.abs(i.amountHT), 0);
+  const plChargesNettes = plChargesTotal - plAvoirsTotal * 2; // net des avoirs déjà inclus en négatif
+
+  // Résultat partiel : CA Interfast (réel) - charges fournisseurs Pennylane
+  const resultatPartiel = caReel - plChargesNettes;
+  const tauxCharges = caReel > 0 ? (plChargesNettes / caReel) * 100 : 0;
+
+  // Charges par mois (Pennylane)
+  const monthlyCharges: Record<string, number> = {};
+  for (const inv of plCurrentCharges) {
+    const k = inv.date.slice(0, 7);
+    monthlyCharges[k] = (monthlyCharges[k] || 0) + Math.abs(inv.amountHT);
+  }
+
+  // Top fournisseurs (groupement par label prefix)
+  const supplierMap: Record<string, number> = {};
+  for (const inv of plCurrentCharges) {
+    const name = inv.label.replace(/^(Facture|Avoir)\s+/i, "").replace(/\s+-\s+\d+.*$/, "").trim();
+    if (name) supplierMap[name] = (supplierMap[name] || 0) + Math.abs(inv.amountHT);
+  }
+  const topSuppliers = Object.entries(supplierMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8);
 
   const prevYear = plHistory.find((h) => h.startYear === fy.startYear - 1);
   const caGrowth = delta(caReel, prevYear?.ca_ht ?? null);
@@ -414,13 +444,15 @@ export default function FinancesPage() {
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                   <SourceBadge source="pennylane" />
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Données comptables Pennylane — factures clients et fournisseurs</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    Charges fournisseurs Pennylane · CA depuis Interfast · {plChargesCount} factures analysées
+                  </span>
                 </div>
 
                 {!plConnected ? (
                   <div className="card" style={{ padding: "24px 20px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", color: "var(--text-muted)", fontSize: 14 }}>Pennylane non connecté</p>
-                    <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Configurez votre token API dans les Paramètres pour accéder aux données comptables.</p>
+                    <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Configurez votre token API dans les Paramètres.</p>
                     <button className="btn-primary" onClick={() => router.push("/settings")} style={{ fontSize: 13, padding: "8px 20px" }}>Configurer Pennylane</button>
                   </div>
                 ) : (
@@ -439,8 +471,7 @@ export default function FinancesPage() {
                         ) : (
                           <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
                             <input type="number" value={objInput} onChange={(e) => setObjInput(e.target.value)}
-                              placeholder="600000" autoFocus
-                              style={{ ...inputStyle, width: 120 }}
+                              placeholder="600000" autoFocus style={{ ...inputStyle, width: 120 }}
                               onKeyDown={(e) => e.key === "Enter" && saveObjective()} />
                             <button className="btn-primary" onClick={saveObjective} disabled={saving} style={{ fontSize: 12, padding: "5px 12px" }}>OK</button>
                             <button className="btn-ghost" onClick={() => setEditObj(false)} style={{ fontSize: 12 }}>×</button>
@@ -449,7 +480,7 @@ export default function FinancesPage() {
                       </div>
                       {caObj && (
                         <>
-                          <Bar value={plCaTotal || caReel} max={caObj} color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"} h={10} />
+                          <Bar value={caReel} max={caObj} color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"} h={10} />
                           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
                             <span>0</span>
                             <span style={{ fontWeight: 700, color: "var(--accent)" }}>{objPct} %</span>
@@ -459,54 +490,78 @@ export default function FinancesPage() {
                       )}
                     </div>
 
-                    {/* KPI Pennylane */}
+                    {/* Synthèse CEO */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                      <KPI label="CA facturé HT" value={fmt(plCaTotal)} sub="Factures émises" color="accent" delta={caGrowth} />
-                      <KPI label="Encaissé" value={fmt(plPaid)} sub="Factures payées" color="green" />
-                      <KPI label="En attente" value={fmt(plPending)} sub="Non soldé" color={plPending > 0 ? "warn" : undefined} />
-                      <KPI label="TVA collectée" value={fmt(interfastStats?.tva_reel)} sub="Interfast" />
+                      <KPI label="CA réalisé HT" value={fmt(caReel)} sub="Source Interfast" color="accent" delta={caGrowth} />
+                      <KPI label="Charges fourn. HT" value={fmt(plChargesNettes)} sub={`${plChargesCount} factures Pennylane`} />
+                      <KPI label="Résultat partiel" value={fmt(resultatPartiel)}
+                        sub="Hors salaires et amortissements"
+                        color={resultatPartiel >= 0 ? "green" : "warn"} />
+                      <KPI label="Taux de charge" value={tauxCharges > 0 ? `${Math.round(tauxCharges)} %` : "—"}
+                        sub="Charges / CA réalisé"
+                        color={tauxCharges > 70 ? "warn" : tauxCharges > 0 ? "blue" : undefined} />
                     </div>
 
-                    {/* CA mensuel */}
-                    <div className="card" style={{ padding: "16px 18px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>CA mensuel — {fy.label}</div>
-                        <SourceBadge source="pennylane" />
-                      </div>
-                      <MonthlyBars monthlyCA={monthlyCA} startYear={fy.startYear} />
-                    </div>
-
-                    {/* Charges fournisseurs */}
-                    <div className="card" style={{ padding: "16px 18px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Charges fournisseurs</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                            Note : hors charges de personnel (non dans Pennylane)
+                    {/* Solde visuel */}
+                    {caReel > 0 && plChargesNettes > 0 && (
+                      <div className="card" style={{ padding: "16px 18px" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Répartition du CA réalisé</div>
+                        <div style={{ display: "flex", height: 32, borderRadius: 10, overflow: "hidden", gap: 2 }}>
+                          <div style={{ flex: plChargesNettes, background: "oklch(0.52 0.085 245 / 0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>{Math.round(tauxCharges)} % charges</span>
+                          </div>
+                          <div style={{ flex: Math.max(caReel - plChargesNettes, 0), background: "oklch(0.55 0.085 155 / 0.7)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>{Math.round(100 - tauxCharges)} % résultat</span>
                           </div>
                         </div>
-                        <SourceBadge source="pennylane" />
-                      </div>
-                      {plCurrent ? (
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Total charges fournisseurs</span>
-                            <span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(plCurrent.charges_fournisseurs)}</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Résultat partiel (CA - fournisseurs)</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: plCurrent.resultat_partiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>
-                              {fmt(plCurrent.resultat_partiel)}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0", padding: "8px 10px", background: "var(--surface-2)", borderRadius: 8 }}>
-                            Ce résultat est partiel : il ne tient pas compte des salaires, charges sociales et amortissements. Utilisez l'onglet Projection pour une estimation complète.
+                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+                          <span>Charges fournisseurs : <strong style={{ color: "var(--text)" }}>{fmt(plChargesNettes)}</strong></span>
+                          <span>Résultat partiel : <strong style={{ color: resultatPartiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{fmt(resultatPartiel)}</strong></span>
+                        </div>
+                        {plAvoirsTotal > 0 && (
+                          <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "8px 0 0" }}>
+                            Inclut {fmt(plAvoirsTotal)} d'avoirs fournisseurs déduits
                           </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Dépenses mensuelles */}
+                    <div className="card" style={{ padding: "16px 18px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>Charges fournisseurs par mois</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Toutes les factures fournisseurs Pennylane</div>
                         </div>
-                      ) : (
-                        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Chargement de l'historique Pennylane…</p>
-                      )}
+                        <SourceBadge source="pennylane" />
+                      </div>
+                      <MonthlyBars monthlyCA={monthlyCharges} startYear={fy.startYear} />
                     </div>
+
+                    {/* Top fournisseurs */}
+                    {topSuppliers.length > 0 && (
+                      <div className="card" style={{ padding: "16px 18px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>Top fournisseurs — exercice {fy.label}</div>
+                          <SourceBadge source="pennylane" />
+                        </div>
+                        {topSuppliers.map(([name, total]) => (
+                          <div key={name} style={{ marginBottom: 10 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
+                              <span style={{ color: "var(--text)", maxWidth: "70%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                              <span>
+                                <strong>{fmt(total)}</strong>
+                                <span style={{ color: "var(--text-muted)", marginLeft: 5 }}>({Math.round((total / plChargesNettes) * 100)} %)</span>
+                              </span>
+                            </div>
+                            <Bar value={total} max={topSuppliers[0][1]} color="oklch(0.52 0.085 245 / 0.6)" h={5} />
+                          </div>
+                        ))}
+                        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "10px 0 0" }}>
+                          Hors salaires, charges sociales et amortissements — voir onglet Projection pour estimation complète
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
               </>
