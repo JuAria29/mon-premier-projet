@@ -3,7 +3,7 @@
 import { Icon } from "@/components/ui/Icons";
 import type { Workspace } from "@/types";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances";
 
 interface SidebarProps {
   workspace: Workspace;
@@ -21,6 +21,7 @@ const navItems: { id: NavItem; label: string; icon: Parameters<typeof Icon>[0]["
   { id: "notes", label: "Notes", icon: "note" },
   { id: "taches", label: "Tâches", icon: "tasks" },
   { id: "agenda", label: "Agenda", icon: "calendar" },
+  { id: "finances", label: "Finances", icon: "chart" },
 ];
 
 export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, userName, onSettingsOpen }: SidebarProps) {

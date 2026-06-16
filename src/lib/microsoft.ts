@@ -100,6 +100,21 @@ function mapMail(m: Record<string, unknown>): Mail {
   };
 }
 
+export async function getMailById(userId: string, messageId: string): Promise<Mail | null> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  try {
+    const data = await graphFetch(
+      token,
+      `/me/messages/${messageId}?$select=id,subject,from,receivedDateTime,bodyPreview,body`
+    );
+    return mapMail(data);
+  } catch {
+    return null;
+  }
+}
+
 export async function getEmails(userId: string, count = 30): Promise<Mail[]> {
   const token = await getStoredToken(userId);
   if (!token) throw new Error("not_connected");

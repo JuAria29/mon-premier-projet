@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     scope: scopes,
     response_mode: "query",
     state: workspace,
+    prompt: "select_account",
   });
 
   // "common" = multi-tenant : accepte tout compte Microsoft (pro + perso)

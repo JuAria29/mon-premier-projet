@@ -15,7 +15,7 @@ import { CoachExchange } from "@/components/dashboard/CoachExchange";
 import { mockData } from "@/lib/mockData";
 import type { Session, Workspace, Layout, Density, Task, AppSettings, Objective, ObjectiveLevel } from "@/types";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances";
 
 const LEVEL_LABELS: Record<ObjectiveLevel, string> = {
   jour: "Aujourd'hui",
@@ -117,6 +117,7 @@ export default function DashboardPage() {
     else if (nav === "objectifs") router.push("/objectifs");
     else if (nav === "notes") router.push("/notes");
     else if (nav === "agenda") router.push("/agenda");
+    else if (nav === "finances") router.push("/finances");
   }
 
   function handleToggle(id: string) {

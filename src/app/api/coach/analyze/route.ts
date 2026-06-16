@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getEmails } from "@/lib/microsoft";
+import { getMailById } from "@/lib/microsoft";
 import { analyzeMail } from "@/lib/claude";
 
 export async function POST(req: NextRequest) {
@@ -10,8 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "mailId requis" }, { status: 400 });
     }
 
-    const mails = await getEmails(USER_ID, 50);
-    const mail = mails.find((m) => m.id === mailId);
+    const mail = await getMailById(USER_ID, mailId);
     if (!mail) {
       return NextResponse.json({ error: "Mail introuvable" }, { status: 404 });
     }
