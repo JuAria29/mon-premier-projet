@@ -1,6 +1,6 @@
 import { createSupabaseServiceClient } from "@/lib/supabase";
 
-const PL_BASE = "https://app.pennylane.com/api/external/v1";
+const PL_BASE = "https://app.pennylane.com/api/external/v2";
 const USER_ID = "julien"; // For multi-user SaaS: replace with auth session user ID
 
 async function getToken(): Promise<string> {
