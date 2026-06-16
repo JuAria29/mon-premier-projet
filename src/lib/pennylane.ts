@@ -1,10 +1,9 @@
 import { createSupabaseServiceClient } from "@/lib/supabase";
 
 const PL_BASE = "https://app.pennylane.com/api/external/v2";
-const USER_ID = "julien"; // For multi-user SaaS: replace with auth session user ID
+const USER_ID = "julien";
 
 async function getToken(): Promise<string> {
-  // Priority 1: token stored in Supabase (per-user SaaS)
   try {
     const supabase = createSupabaseServiceClient();
     const { data } = await supabase
@@ -14,24 +13,17 @@ async function getToken(): Promise<string> {
       .eq("service", "pennylane")
       .single();
     if (data?.api_token) return data.api_token;
-  } catch {
-    // fall through
-  }
+  } catch { /* fall through */ }
 
-  // Priority 2: env var fallback (dev / self-hosted)
   const envToken = process.env.PENNYLANE_API_TOKEN;
   if (envToken) return envToken;
-
   throw new Error("Pennylane non configuré");
 }
 
 async function plFetch(path: string): Promise<unknown> {
   const token = await getToken();
   const res = await fetch(`${PL_BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -52,63 +44,55 @@ export interface PLInvoice {
   customerName: string | null;
 }
 
-// V2 API response shape
-type RawPLInvoice = {
-  id?: string;
+// V2 API — amounts are strings, supplier is a URL reference (no inline name)
+type RawPLV2Invoice = {
+  id?: number | string;
   date?: string;
   deadline?: string | null;
-  status?: string;
-  // V2 amount fields
-  amount?: number;
-  currency_amount?: number;
-  currency_amount_before_tax?: number;
-  amount_excluding_tax?: number;
-  total_excl_tax?: number;
-  // V2 may nest under invoice
-  invoice?: {
-    amount?: number;
-    currency_amount?: number;
-    currency_amount_before_tax?: number;
-    label?: string;
-    date?: string;
-    deadline?: string;
-    status?: string;
-  };
   label?: string;
+  invoice_number?: string;
+  // V2: amounts are strings
+  currency_amount?: string | number;
+  currency_amount_before_tax?: string | number;
+  currency_tax?: string | number;
+  amount?: string | number;
+  // V2 status is payment_status
+  payment_status?: string;
+  status?: string;
+  accounting_status?: string;
+  // V2: supplier/customer is a URL reference, not inline
+  supplier?: { id?: number; url?: string };
+  customer?: { id?: number; url?: string; name?: string };
   thirdparty_name?: string;
-  customer?: { name?: string; customer_name?: string };
-  supplier?: { name?: string };
 };
 
-function mapInvoice(raw: RawPLInvoice): PLInvoice {
-  // V2 may nest data under raw.invoice
-  const src = raw.invoice ? { ...raw.invoice, ...raw } : raw;
-  const amountTTC = src.currency_amount ?? src.amount ?? 0;
-  const amountHT =
-    src.currency_amount_before_tax ??
-    src.amount_excluding_tax ??
-    src.total_excl_tax ??
-    amountTTC;
-  const customerName =
-    raw.thirdparty_name ??
-    raw.customer?.customer_name ??
-    raw.customer?.name ??
-    raw.supplier?.name ??
-    null;
+function toFloat(v: string | number | undefined | null): number {
+  if (v == null) return 0;
+  return parseFloat(String(v)) || 0;
+}
+
+function mapInvoice(raw: RawPLV2Invoice): PLInvoice {
+  const amountHT = toFloat(raw.currency_amount_before_tax);
+  const amountTTC = toFloat(raw.currency_amount ?? raw.amount);
+  // Use label or invoice_number as display name since supplier name requires a separate API call
+  const customerName = raw.thirdparty_name ?? raw.customer?.name ?? null;
+  const status = raw.payment_status ?? raw.status ?? raw.accounting_status ?? "unknown";
+
   return {
-    id: raw.id ?? "",
-    date: src.date ?? raw.date ?? "",
-    deadline: (src.deadline ?? raw.deadline) ?? null,
-    status: src.status ?? raw.status ?? "unknown",
+    id: String(raw.id ?? ""),
+    date: raw.date ?? "",
+    deadline: raw.deadline ?? null,
+    status,
     amountTTC,
     amountHT,
-    label: src.label ?? raw.label ?? "",
+    label: raw.label ?? raw.invoice_number ?? "",
     customerName,
   };
 }
 
-// V2 uses cursor-based pagination and different date filter format
-async function fetchAll(endpoint: string, from: string, to: string, dateFilter?: string): Promise<PLInvoice[]> {
+// V2 uses cursor-based pagination; date filter format is not supported as nested hash.
+// We fetch all and filter client-side by date range.
+async function fetchAll(endpoint: string, from: string, to: string): Promise<PLInvoice[]> {
   const all: PLInvoice[] = [];
   let cursor: string | null = null;
 
@@ -116,26 +100,14 @@ async function fetchAll(endpoint: string, from: string, to: string, dateFilter?:
     const params = new URLSearchParams({ per_page: "100" });
     if (cursor) params.set("cursor", cursor);
 
-    // Date filter format determined from debug (injected once known)
-    if (dateFilter === "min_max") {
-      params.set("filter[min_date]", from);
-      params.set("filter[max_date]", to);
-    } else if (dateFilter === "issued") {
-      params.set("filter[issued_after]", from);
-      params.set("filter[issued_before]", to);
-    }
-    // If no dateFilter set, fetch all and filter below
-
     const data = (await plFetch(`/${endpoint}?${params}`)) as Record<string, unknown>;
-    const items = (data.items as RawPLInvoice[] | undefined) ?? [];
+    const items = (data.items as RawPLV2Invoice[] | undefined) ?? [];
 
-    // Client-side date filter fallback when API filter not yet known
-    const filtered = dateFilter
-      ? items
-      : items.filter((i) => {
-          const d = i.date ?? i.invoice?.date ?? "";
-          return d >= from && d <= to;
-        });
+    // Filter client-side: keep invoices whose date falls within [from, to]
+    const filtered = items.filter((i) => {
+      const d = i.date ?? "";
+      return d >= from && d <= to;
+    });
 
     all.push(...filtered.map(mapInvoice));
 
@@ -148,15 +120,14 @@ async function fetchAll(endpoint: string, from: string, to: string, dateFilter?:
   return all;
 }
 
-// DATE_FILTER will be set once we confirm the correct format from debug
-const DATE_FILTER = undefined; // "min_max" | "issued" | undefined (client-side fallback)
-
+// Customer invoices: may be 0 if invoicing is handled via Interfast (CA comes from Interfast)
 export async function getCustomerInvoices(from: string, to: string): Promise<PLInvoice[]> {
-  return fetchAll("customer_invoices", from, to, DATE_FILTER);
+  return fetchAll("customer_invoices", from, to);
 }
 
+// Supplier invoices: charges fournisseurs — main Pennylane data source
 export async function getSupplierInvoices(from: string, to: string): Promise<PLInvoice[]> {
-  return fetchAll("supplier_invoices", from, to, DATE_FILTER);
+  return fetchAll("supplier_invoices", from, to);
 }
 
 export async function isPennylaneConfigured(): Promise<boolean> {
