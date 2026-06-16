@@ -18,6 +18,17 @@ interface InterfastStats {
   ca_reel: number; ca_previsionnel: number; devis_signes: number;
   achats: number; retards: number; tva_reel: number;
   mo_reel: number; fournitures_reel: number; synced_at: string;
+  // Pipeline devis
+  devis_signes_count?: number;
+  devis_envoyes_count?: number;
+  devis_envoyes_total?: number;
+  devis_refuses_count?: number;
+  devis_previsionnel_total?: number;
+  devis_reel_total?: number;
+  // Chantiers
+  chantiers_non_demarre?: number;
+  chantiers_en_cours?: number;
+  chantiers_termines?: number;
 }
 
 interface PLInvoice {
@@ -45,7 +56,7 @@ interface ManualHistoryEntry {
   tresorerie_fin: number | null; effectif: number | null;
 }
 
-type Tab = "comptabilite" | "activite" | "evolution" | "projection";
+type Tab = "synthese" | "commercial" | "finance";
 
 // ─── Catégorisation des charges fournisseurs ──────────────────────────────────
 
@@ -122,15 +133,36 @@ const delta = (cur: number | null, prev: number | null) => {
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 
-function KPI({ label, value, sub, color, delta: d }: {
-  label: string; value: string; sub?: string;
+function Tooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", alignItems: "center", verticalAlign: "middle" }}>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{ fontSize: 10, width: 14, height: 14, borderRadius: "50%", border: "1.5px solid var(--text-muted)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "default", lineHeight: 1, fontWeight: 700, userSelect: "none", flexShrink: 0 }}
+      >i</span>
+      {show && (
+        <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", background: "oklch(0.2 0.01 60)", color: "#fff", fontSize: 11, lineHeight: 1.45, padding: "7px 10px", borderRadius: 8, width: 220, zIndex: 100, whiteSpace: "pre-wrap", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", pointerEvents: "none" }}>
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function KPI({ label, value, sub, color, delta: d, tooltip }: {
+  label: string; value: string; sub?: string; tooltip?: string;
   color?: "accent" | "green" | "blue" | "warn"; delta?: { value: string; positive: boolean } | null;
 }) {
   const c = color === "accent" ? "var(--accent)" : color === "green" ? "oklch(0.55 0.085 155)"
     : color === "blue" ? "oklch(0.52 0.085 245)" : color === "warn" ? "oklch(0.52 0.085 245)" : "var(--text)";
   return (
     <div className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </div>
       <div style={{ fontSize: 20, fontWeight: 800, color: c, lineHeight: 1.1 }}>{value}</div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         {sub && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{sub}</span>}
@@ -354,7 +386,7 @@ const EMPTY_HISTORY_FORM = {
 
 export default function FinancesPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("comptabilite");
+  const [tab, setTab] = useState<Tab>("synthese");
   const [loading, setLoading] = useState(true);
   const [plLoading, setPlLoading] = useState(false);
 
@@ -406,7 +438,7 @@ export default function FinancesPage() {
   }, [plConnected, historyLoaded]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (tab === "evolution" || tab === "projection") loadHistory(); }, [tab, loadHistory]);
+  useEffect(() => { if (tab === "finance") loadHistory(); }, [tab, loadHistory]);
 
   async function saveObjective() {
     setSaving(true);
@@ -447,6 +479,18 @@ export default function FinancesPage() {
   const pipeline = interfastStats?.devis_signes ?? 0;
   const retards = interfastStats?.retards ?? 0;
   const caObj = objective.ca_objectif;
+
+  // Pipeline devis
+  const devisEnvoyesCount = interfastStats?.devis_envoyes_count ?? 0;
+  const devisEnvoyesTotal = interfastStats?.devis_envoyes_total ?? 0;
+  const devisSignesCount = interfastStats?.devis_signes_count ?? 0;
+  const devisRefusesCount = interfastStats?.devis_refuses_count ?? 0;
+  const devisDecides = devisSignesCount + devisRefusesCount; // devis avec décision finale
+  const tauxTransformation = devisDecides > 0 ? Math.round((devisSignesCount / devisDecides) * 100) : null;
+  const chantiersNonDemarre = interfastStats?.chantiers_non_demarre ?? 0;
+  const chantiersEnCours = interfastStats?.chantiers_en_cours ?? 0;
+  const chantiersTermines = interfastStats?.chantiers_termines ?? 0;
+  const chantiersTotal = chantiersNonDemarre + chantiersEnCours + chantiersTermines;
   const objPct = caObj ? Math.min(Math.round((caReel / caObj) * 100), 100) : null;
 
   const plCurrent = plHistory.find((h) => h.isCurrent) ?? null;
@@ -514,10 +558,9 @@ export default function FinancesPage() {
   const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 3, fontWeight: 500 };
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: "comptabilite", label: "Comptabilité" },
-    { id: "activite", label: "Activité" },
-    { id: "evolution", label: "Évolution" },
-    { id: "projection", label: "Projection" },
+    { id: "synthese", label: "Synthèse" },
+    { id: "commercial", label: "Commercial" },
+    { id: "finance", label: "Finance" },
   ];
 
   return (
@@ -565,67 +608,208 @@ export default function FinancesPage() {
         ) : (
 
           <>
-            {/* ══ COMPTABILITÉ ════════════════════════════════════════════════ */}
-            {tab === "comptabilite" && (
+            {/* ══ SYNTHÈSE ════════════════════════════════════════════════════ */}
+            {tab === "synthese" && (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                  <SourceBadge source="pennylane" />
+                {/* Sources actives */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {interfastStats && <SourceBadge source="interfast" />}
+                  {plConnected && <SourceBadge source="pennylane" />}
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    Charges fournisseurs Pennylane · CA depuis Interfast · {plChargesCount} factures analysées
+                    Vue consolidée · Exercice {fy.label}
                   </span>
                 </div>
 
-                {!plConnected ? (
-                  <div className="card" style={{ padding: "24px 20px", textAlign: "center" }}>
-                    <p style={{ margin: "0 0 8px", color: "var(--text-muted)", fontSize: 14 }}>Pennylane non connecté</p>
-                    <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Configurez votre token API dans les Paramètres.</p>
-                    <button className="btn-primary" onClick={() => router.push("/settings")} style={{ fontSize: 13, padding: "8px 20px" }}>Configurer Pennylane</button>
+                {/* Objectif CA */}
+                <div className="card" style={{ padding: "14px 18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Objectif CA {fy.label}</div>
+                      {!editObj && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{caObj ? `${fmt(caObj)} — ${objPct} % atteint` : "Non défini"}</div>}
+                    </div>
+                    {!editObj ? (
+                      <button className="btn-ghost" onClick={() => setEditObj(true)} style={{ fontSize: 12, padding: "4px 10px" }}>
+                        {caObj ? "Modifier" : "Définir"}
+                      </button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                        <input type="number" value={objInput} onChange={(e) => setObjInput(e.target.value)}
+                          placeholder="600000" autoFocus style={{ ...inputStyle, width: 120 }}
+                          onKeyDown={(e) => e.key === "Enter" && saveObjective()} />
+                        <button className="btn-primary" onClick={saveObjective} disabled={saving} style={{ fontSize: 12, padding: "5px 12px" }}>OK</button>
+                        <button className="btn-ghost" onClick={() => setEditObj(false)} style={{ fontSize: 12 }}>×</button>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    {/* Objectif CA */}
-                    <div className="card" style={{ padding: "14px 18px" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Objectif CA {fy.label}</div>
-                          {!editObj && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{caObj ? `${fmt(caObj)} — ${objPct} % atteint` : "Non défini"}</div>}
-                        </div>
-                        {!editObj ? (
-                          <button className="btn-ghost" onClick={() => setEditObj(true)} style={{ fontSize: 12, padding: "4px 10px" }}>
-                            {caObj ? "Modifier" : "Définir"}
-                          </button>
-                        ) : (
-                          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                            <input type="number" value={objInput} onChange={(e) => setObjInput(e.target.value)}
-                              placeholder="600000" autoFocus style={{ ...inputStyle, width: 120 }}
-                              onKeyDown={(e) => e.key === "Enter" && saveObjective()} />
-                            <button className="btn-primary" onClick={saveObjective} disabled={saving} style={{ fontSize: 12, padding: "5px 12px" }}>OK</button>
-                            <button className="btn-ghost" onClick={() => setEditObj(false)} style={{ fontSize: 12 }}>×</button>
+                  {caObj && (
+                    <>
+                      <Bar value={caReel} max={caObj} color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"} h={10} />
+                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                        <span>0</span>
+                        <span style={{ fontWeight: 700, color: "var(--accent)" }}>{objPct} %</span>
+                        <span>{fmt(caObj)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* KPIs principaux */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  <KPI label="CA Réalisé HT"
+                    tooltip="Chiffre d'affaires facturé sur l'exercice, hors taxes. Cumul de tous les chantiers facturés. Source : Interfast."
+                    value={fmt(caReel)} sub="Source Interfast" color="accent" delta={caGrowth} />
+                  <KPI label="CA Prévisionnel HT"
+                    tooltip="Estimation du CA total de l'exercice : chantiers terminés + en cours + planifiés. Recalculé à chaque synchro Interfast."
+                    value={fmt(caPrev)} sub="Total exercice estimé" />
+                  <KPI label="Reste à facturer"
+                    tooltip="Différence entre le CA prévisionnel et le CA déjà facturé. Ce qui sera encore facturé si tous les chantiers planifiés aboutissent."
+                    value={fmt(Math.max(caPrev - caReel, 0))} sub="Prévisionnel − facturé" />
+                </div>
+
+                {/* Commercial + Finance côte à côte */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+
+                  {/* Bloc Commercial */}
+                  <div className="card" style={{ padding: "16px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>Commercial</div>
+                      <SourceBadge source="interfast" />
+                    </div>
+                    {interfastStats ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {/* Taux de transformation */}
+                        {tauxTransformation !== null && (
+                          <div style={{ padding: "10px 12px", background: "var(--accent-soft)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                              <span style={{ fontSize: 12, color: "var(--text)" }}>Taux de transformation</span>
+                              <Tooltip text={`${devisSignesCount} devis signés sur ${devisDecides} décidés (signés + refusés). Les ${devisEnvoyesCount - devisDecides} autres sont encore en attente.`} />
+                            </div>
+                            <span style={{ fontSize: 22, fontWeight: 800, color: tauxTransformation >= 30 ? "oklch(0.55 0.085 155)" : "var(--accent)" }}>{tauxTransformation} %</span>
+                          </div>
+                        )}
+                        {[
+                          { label: "Pipeline signé", value: fmt(pipeline), sub: devisSignesCount > 0 ? `${devisSignesCount} devis` : undefined },
+                          { label: "Devis envoyés", value: devisEnvoyesCount > 0 ? `${devisEnvoyesCount} devis` : "—", sub: devisEnvoyesTotal > 0 ? fmt(devisEnvoyesTotal) : undefined },
+                          { label: "Impayés", value: fmt(retards), alert: retards > 0 },
+                        ].map(({ label, value, sub, alert }) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                            <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                            <div style={{ textAlign: "right" }}>
+                              <strong style={{ color: alert ? "oklch(0.52 0.085 245)" : "var(--text)" }}>{value}</strong>
+                              {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
+                            </div>
+                          </div>
+                        ))}
+                        {chantiersTotal > 0 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                            {[
+                              { label: `${chantiersNonDemarre} à démarrer`, color: "oklch(0.52 0.085 245)" },
+                              { label: `${chantiersEnCours} en cours`, color: "var(--accent)" },
+                              { label: `${chantiersTermines} terminés`, color: "oklch(0.55 0.085 155)" },
+                            ].map(({ label, color }) => (
+                              <span key={label} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: `${color}20`, color }}>{label}</span>
+                            ))}
                           </div>
                         )}
                       </div>
-                      {caObj && (
-                        <>
-                          <Bar value={caReel} max={caObj} color={objPct && objPct >= 80 ? "oklch(0.55 0.085 155)" : "var(--accent)"} h={10} />
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
-                            <span>0</span>
-                            <span style={{ fontWeight: 700, color: "var(--accent)" }}>{objPct} %</span>
-                            <span>{fmt(caObj)}</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    ) : (
+                      <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Données non synchronisées — demandez une synchro à Aria.</p>
+                    )}
+                  </div>
 
-                    {/* Synthèse CEO */}
+                  {/* Bloc Finance */}
+                  <div className="card" style={{ padding: "16px 18px", opacity: plConnected ? 1 : 0.75 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>Finance</div>
+                      <SourceBadge source="pennylane" />
+                    </div>
+                    {plConnected ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {caReel > 0 && plChargesNettes > 0 && (
+                          <div style={{ padding: "10px 12px", background: resultatPartiel >= 0 ? "oklch(0.55 0.085 155 / 0.1)" : "oklch(0.52 0.085 245 / 0.1)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                              <span style={{ fontSize: 12, color: "var(--text)" }}>Résultat partiel</span>
+                              <Tooltip text="CA réalisé moins les charges fournisseurs Pennylane. Avant salaires, charges sociales et amortissements." />
+                            </div>
+                            <span style={{ fontSize: 22, fontWeight: 800, color: resultatPartiel >= 0 ? "oklch(0.55 0.085 155)" : "oklch(0.52 0.085 245)" }}>{fmt(resultatPartiel)}</span>
+                          </div>
+                        )}
+                        {[
+                          { label: "Charges fournisseurs", value: fmt(plChargesNettes), sub: `${plChargesCount} factures` },
+                          { label: "Taux de charge", value: tauxCharges > 0 ? `${Math.round(tauxCharges)} %` : "—", alert: tauxCharges > 70 },
+                          { label: "Achats matériaux", value: fmt(interfastStats?.achats ?? 0) },
+                        ].map(({ label, value, sub, alert }) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                            <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                            <div style={{ textAlign: "right" }}>
+                              <strong style={{ color: alert ? "oklch(0.52 0.085 245)" : "var(--text)" }}>{value}</strong>
+                              {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "20px 0" }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ fontSize: 18 }}>🔒</span>
+                        </div>
+                        <p style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center", margin: 0 }}>
+                          Pennylane non connecté<br />
+                          <span style={{ fontSize: 11 }}>Charges comptables indisponibles</span>
+                        </p>
+                        <button className="btn-ghost" onClick={() => router.push("/settings")} style={{ fontSize: 11, padding: "4px 10px" }}>Configurer →</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {interfastStats?.synced_at && (
+                  <p style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>
+                    Dernière synchro Interfast : {new Date(interfastStats.synced_at).toLocaleString("fr-FR")}
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* ══ FINANCE (Pennylane) ══════════════════════════════════════════ */}
+            {tab === "finance" && (
+              <>
+                {!plConnected ? (
+                  <div className="card" style={{ padding: "48px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>📊</div>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Finance — Pennylane</div>
+                      <p style={{ margin: "0 0 4px", color: "var(--text-muted)", fontSize: 13 }}>Connectez votre compte Pennylane pour accéder à la comptabilité fournisseurs.</p>
+                      <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 12 }}>Charges par catégorie, évolution historique et projection de résultat.</p>
+                    </div>
+                    <button className="btn-primary" onClick={() => router.push("/settings")} style={{ fontSize: 13, padding: "9px 22px" }}>Configurer Pennylane →</button>
+                  </div>
+                ) : (
+                  <>
+                    {/* KPIs Finance — données Pennylane uniquement */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                      <KPI label="CA réalisé HT" value={fmt(caReel)} sub="Source Interfast" color="accent" delta={caGrowth} />
-                      <KPI label="Charges fourn. HT" value={fmt(plChargesNettes)} sub={`${plChargesCount} factures Pennylane`} />
-                      <KPI label="Résultat partiel" value={fmt(resultatPartiel)}
-                        sub="Hors salaires et amortissements"
+                      <KPI label="Charges fourn. HT"
+                        tooltip="Total des factures fournisseurs enregistrées dans Pennylane sur l'exercice (carburant, matériaux, assurances, sous-traitance…). Hors salaires et charges sociales."
+                        value={fmt(plChargesNettes)} sub={`${plChargesCount} factures analysées`} color="accent" />
+                      <KPI label="Résultat partiel"
+                        tooltip="CA réalisé (Interfast) moins les charges fournisseurs Pennylane. Résultat avant salaires, charges sociales et amortissements — donc supérieur au résultat net final."
+                        value={fmt(resultatPartiel)}
+                        sub="CA Interfast − charges Pennylane"
                         color={resultatPartiel >= 0 ? "green" : "warn"} />
-                      <KPI label="Taux de charge" value={tauxCharges > 0 ? `${Math.round(tauxCharges)} %` : "—"}
-                        sub="Charges / CA réalisé"
+                      <KPI label="Taux de charge"
+                        tooltip="Part des charges fournisseurs dans le CA réalisé. En dessous de 60 % = bonne maîtrise. Au-delà de 70 %, vigilance recommandée."
+                        value={tauxCharges > 0 ? `${Math.round(tauxCharges)} %` : "—"}
+                        sub="Charges Pennylane / CA Interfast"
                         color={tauxCharges > 70 ? "warn" : tauxCharges > 0 ? "blue" : undefined} />
+                      {plAvoirsTotal > 0 ? (
+                        <KPI label="Avoirs déduits"
+                          tooltip="Montant des avoirs fournisseurs reçus sur l'exercice, déjà déduits du total des charges. Représente des retours ou corrections de facturation fournisseur."
+                          value={fmt(plAvoirsTotal)} sub="Retours / corrections fourn." />
+                      ) : (
+                        <KPI label="Factures analysées"
+                          tooltip="Nombre total de factures fournisseurs importées depuis Pennylane pour cet exercice fiscal (oct. → sept.)."
+                          value={`${plChargesCount}`} sub="Fournisseurs Pennylane" />
+                      )}
                     </div>
 
                     {/* Solde visuel */}
@@ -672,7 +856,7 @@ export default function FinancesPage() {
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div>
                               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Salaires & Charges sociales</div>
-                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Non disponible via Pennylane — à saisir dans l'onglet Évolution</div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Non disponible via Pennylane — à saisir dans la section Historique ci-dessous</div>
                             </div>
                             <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: "var(--surface-2)", color: "var(--text-muted)" }}>Hors Pennylane</span>
                           </div>
@@ -703,12 +887,12 @@ export default function FinancesPage() {
               </>
             )}
 
-            {/* ══ ACTIVITÉ ════════════════════════════════════════════════════ */}
-            {tab === "activite" && (
+            {/* ══ COMMERCIAL (Interfast) ══════════════════════════════════════ */}
+            {tab === "commercial" && (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                   <SourceBadge source="interfast" />
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pilotage de l'activité — devis, interventions, facturation</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Activité commerciale — devis, chantiers, facturation · Interfast</span>
                 </div>
 
                 {!interfastStats ? (
@@ -718,13 +902,117 @@ export default function FinancesPage() {
                 ) : (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                      <KPI label="CA Réalisé" value={fmt(caReel)} sub="Chantiers facturés HT" color="accent" />
-                      <KPI label="CA Prévisionnel" value={fmt(caPrev)} sub="Total exercice estimé" />
-                      <KPI label="Reste à facturer" value={fmt(caPrev - caReel)} sub="En cours + prévu" />
-                      <KPI label="Pipeline signé" value={fmt(pipeline)} sub="Devis signés, à planifier" color="blue" />
-                      <KPI label="Impayés" value={fmt(retards)} sub="Retards de paiement" color={retards > 0 ? "warn" : undefined} />
-                      <KPI label="Achats matériaux" value={fmt(interfastStats.achats)} sub="Valeur achats Interfast" />
+                      <KPI label="CA Réalisé"
+                        tooltip="Chiffre d'affaires effectivement facturé sur l'exercice, toutes interventions et chantiers terminés confondus. Source Interfast."
+                        value={fmt(caReel)} sub="Chantiers facturés HT" color="accent" />
+                      <KPI label="CA Prévisionnel"
+                        tooltip="Estimation du CA total de l'exercice basée sur les chantiers planifiés, en cours et facturés. Recalculé par Interfast à chaque synchro."
+                        value={fmt(caPrev)} sub="Total exercice estimé" />
+                      <KPI label="Reste à facturer"
+                        tooltip="Différence entre le CA prévisionnel et le CA déjà facturé. Représente ce qui sera encore facturé d'ici la fin de l'exercice si tous les chantiers aboutissent."
+                        value={fmt(caPrev - caReel)} sub="En cours + prévu" />
+                      <KPI label="Pipeline signé"
+                        tooltip={devisSignesCount > 0 ? `${devisSignesCount} devis signés — travaux acceptés mais pas encore planifiés ou facturés. Représente le carnet de commandes garanti.` : "Devis signés par les clients — travaux acceptés mais pas encore planifiés ou facturés."}
+                        value={fmt(pipeline)} sub={devisSignesCount > 0 ? `${devisSignesCount} devis signés` : "Devis signés, à planifier"} color="blue" />
+                      <KPI label="Impayés"
+                        tooltip="Montant total des factures en retard de paiement à la date de synchro. À surveiller : un impayé élevé peut indiquer un risque de trésorerie."
+                        value={fmt(retards)} sub="Retards de paiement" color={retards > 0 ? "warn" : undefined} />
+                      <KPI label="Achats matériaux"
+                        tooltip="Valeur totale des achats de matériaux enregistrés dans Interfast pour cet exercice. Correspond aux fournitures commandées pour les chantiers."
+                        value={fmt(interfastStats.achats)} sub="Valeur achats Interfast" />
                     </div>
+
+                    {/* ── Pipeline funnel ───────────────────────────── */}
+                    {devisEnvoyesCount > 0 && (
+                      <div className="card" style={{ padding: "18px 20px" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>Pipeline commercial — Entonnoir devis</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>De l'envoi du devis à la facturation</div>
+                          </div>
+                          {tauxTransformation !== null && (
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: tauxTransformation >= 30 ? "oklch(0.55 0.085 155)" : tauxTransformation >= 20 ? "var(--accent)" : "oklch(0.52 0.085 245)" }}>
+                                {tauxTransformation} %
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                                Taux de transfo <Tooltip text={`Sur ${devisDecides} devis avec décision (signés + refusés), ${devisSignesCount} ont été signés. Taux = ${devisSignesCount}/${devisDecides} = ${tauxTransformation} %. Les ${devisEnvoyesCount - devisDecides} restants sont encore en attente de réponse.`} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Funnel steps */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {[
+                            {
+                              label: "Devis envoyés",
+                              count: devisEnvoyesCount,
+                              amount: devisEnvoyesTotal,
+                              color: "oklch(0.52 0.085 245)",
+                              width: 100,
+                              tooltip: `${devisEnvoyesCount} devis ont été envoyés à des clients sur cet exercice, pour un montant total de ${fmt(devisEnvoyesTotal)} HT. C'est le volume total de prospection commerciale.`,
+                            },
+                            {
+                              label: "Devis signés",
+                              count: devisSignesCount,
+                              amount: pipeline,
+                              color: "var(--accent)",
+                              width: devisEnvoyesCount > 0 ? Math.round((devisSignesCount / devisEnvoyesCount) * 100) : 0,
+                              tooltip: `${devisSignesCount} devis ont été acceptés et signés par les clients, pour ${fmt(pipeline)} HT. Ce montant correspond au carnet de commandes garanti — travaux à réaliser.`,
+                            },
+                            {
+                              label: "Chantiers en cours",
+                              count: chantiersEnCours,
+                              amount: null,
+                              color: "oklch(0.55 0.085 155)",
+                              width: devisEnvoyesCount > 0 ? Math.round((chantiersEnCours / devisEnvoyesCount) * 100) : 0,
+                              tooltip: `${chantiersEnCours} chantiers sont actuellement en cours d'exécution. ${chantiersNonDemarre} sont planifiés mais pas encore démarrés. ${chantiersTermines} sont terminés sur l'exercice.`,
+                            },
+                            {
+                              label: "CA facturé",
+                              count: null,
+                              amount: caReel,
+                              color: "oklch(0.55 0.085 155)",
+                              width: devisEnvoyesTotal > 0 ? Math.min(Math.round((caReel / devisEnvoyesTotal) * 100), 100) : 0,
+                              tooltip: `${fmt(caReel)} HT effectivement facturés sur l'exercice. Rapporté au pipe total de ${fmt(devisEnvoyesTotal)}, cela représente ${devisEnvoyesTotal > 0 ? Math.round((caReel / devisEnvoyesTotal) * 100) : 0} % du volume de devis envoyés.`,
+                            },
+                          ].map((step, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div style={{ width: 130, flexShrink: 0, display: "flex", alignItems: "center", gap: 5 }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{step.label}</span>
+                                <Tooltip text={step.tooltip} />
+                              </div>
+                              <div style={{ flex: 1, position: "relative", height: 28, background: "var(--surface-2)", borderRadius: 6, overflow: "hidden" }}>
+                                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${step.width}%`, background: step.color, borderRadius: 6, opacity: 0.85, transition: "width 0.5s ease" }} />
+                                <div style={{ position: "absolute", left: 10, top: 0, height: "100%", display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: step.width > 25 ? "#fff" : "var(--text)", zIndex: 1 }}>
+                                  {step.count !== null && <span>{step.count} devis</span>}
+                                  {step.amount !== null && <span>{fmt(step.amount)}</span>}
+                                  <span style={{ opacity: 0.8 }}>({step.width} %)</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Devis refusés */}
+                        {devisRefusesCount > 0 && (
+                          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 20, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              <strong style={{ color: "oklch(0.52 0.085 245)" }}>{devisRefusesCount}</strong> devis refusés
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                              <strong>{devisEnvoyesCount - devisSignesCount - devisRefusesCount}</strong> devis en attente de réponse
+                            </div>
+                            {chantiersTotal > 0 && (
+                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                Chantiers : <strong style={{ color: "oklch(0.52 0.085 245)" }}>{chantiersNonDemarre}</strong> à démarrer · <strong style={{ color: "var(--accent)" }}>{chantiersEnCours}</strong> en cours · <strong style={{ color: "oklch(0.55 0.085 155)" }}>{chantiersTermines}</strong> terminés
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Répartition */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -767,9 +1055,15 @@ export default function FinancesPage() {
               </>
             )}
 
-            {/* ══ ÉVOLUTION ════════════════════════════════════════════════════ */}
-            {tab === "evolution" && (
+            {/* ══ FINANCE — Historique ════════════════════════════════════════ */}
+            {tab === "finance" && (
               <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Historique</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                </div>
+
                 {/* Charges fournisseurs par exercice (Pennylane) */}
                 <div className="card" style={{ padding: "16px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
@@ -922,12 +1216,17 @@ export default function FinancesPage() {
               </>
             )}
 
-            {/* ══ PROJECTION ══════════════════════════════════════════════════ */}
-            {tab === "projection" && (
+            {/* ══ FINANCE — Projection ════════════════════════════════════════ */}
+            {tab === "finance" && (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Projection résultat</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent)" }}>Estimation</span>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Projection résultat exercice {fy.label} · basée sur historique + données temps réel</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Exercice {fy.label} · basée sur historique Pennylane + données Interfast</span>
                 </div>
 
                 {plLoading ? (
