@@ -8,6 +8,7 @@ interface TopbarProps {
   onSessionChange: (s: Session) => void;
   workspace: Workspace;
   onSettingsOpen: () => void;
+  onMenuToggle?: () => void;
 }
 
 const sessions: { id: Session; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
@@ -34,11 +35,16 @@ function getDateLabel() {
   };
 }
 
-export function Topbar({ session, onSessionChange, workspace, onSettingsOpen }: TopbarProps) {
+export function Topbar({ session, onSessionChange, workspace, onSettingsOpen, onMenuToggle }: TopbarProps) {
   const date = getDateLabel();
 
   return (
     <header className="topbar">
+      {/* Hamburger — mobile uniquement */}
+      <button className="hamburger-btn" onClick={onMenuToggle} aria-label="Menu">
+        <Icon name="menu" size={20} />
+      </button>
+
       {/* Date */}
       <div className="topbar-date">
         <span className="td-day">{date.main}</span>

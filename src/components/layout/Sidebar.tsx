@@ -12,6 +12,8 @@ interface SidebarProps {
   onNavChange: (n: NavItem) => void;
   userName: string;
   onSettingsOpen: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const navItems: { id: NavItem; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
@@ -24,7 +26,7 @@ const navItems: { id: NavItem; label: string; icon: Parameters<typeof Icon>[0]["
   { id: "finances", label: "Finances", icon: "chart" },
 ];
 
-export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, userName, onSettingsOpen }: SidebarProps) {
+export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, userName, onSettingsOpen, isOpen, onClose }: SidebarProps) {
   const initiales = userName
     .split(" ")
     .map((n) => n[0])
@@ -33,7 +35,7 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
     .slice(0, 2);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${isOpen ? " sidebar-open" : ""}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="brand-icon">A</div>
@@ -41,6 +43,9 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
           <span className="brand-aria">Aria</span>
           <span className="brand-coach">Coach</span>
         </div>
+        <button className="sidebar-close-btn" onClick={onClose} aria-label="Fermer le menu">
+          <Icon name="close" size={16} />
+        </button>
       </div>
 
       {/* Workspace switcher */}

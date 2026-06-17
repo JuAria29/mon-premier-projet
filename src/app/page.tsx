@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [layout, setLayout] = useState<Layout>("equilibre");
   const [density, setDensity] = useState<Density>("regular");
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tasks, setTasks] = useState<Task[]>(mockData.pro.tasks);
   const [ton, setTon] = useState("Direct");
   const [realHorizons, setRealHorizons] = useState<{ id: string; label: string; objectif: string; pct: number }[] | null>(null);
@@ -111,6 +112,7 @@ export default function DashboardPage() {
   }
 
   function handleNavChange(nav: NavItem) {
+    setSidebarOpen(false);
     setActiveNav(nav);
     if (nav === "mails") router.push("/mails");
     else if (nav === "taches") router.push("/taches");
@@ -205,6 +207,10 @@ export default function DashboardPage() {
 
   return (
     <div className="app-shell">
+      {/* Overlay mobile */}
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
       <Sidebar
         workspace={workspace}
         onWorkspaceChange={handleWorkspaceChange}
@@ -212,6 +218,8 @@ export default function DashboardPage() {
         onNavChange={handleNavChange}
         userName="Julien Pasini"
         onSettingsOpen={() => router.push("/settings")}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <div className="main">
         <Topbar
@@ -219,6 +227,7 @@ export default function DashboardPage() {
           onSessionChange={setSession}
           workspace={workspace}
           onSettingsOpen={() => router.push("/settings")}
+          onMenuToggle={() => setSidebarOpen((v) => !v)}
         />
         <div className="content">
           {renderDashboard()}

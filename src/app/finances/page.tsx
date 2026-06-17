@@ -29,6 +29,22 @@ interface InterfastStats {
   chantiers_non_demarre?: number;
   chantiers_en_cours?: number;
   chantiers_termines?: number;
+  // Brouillons
+  brouillons_count?: number;
+  brouillons_total?: number;
+  brouillons_oldest_days?: number;
+  brouillons_items?: Array<{ label: string; client: string; montant_ht: number; created_at: string; days: number }>;
+  // Activités
+  ca_reel_maintenance?: number;
+  ca_prev_maintenance?: number;
+  mo_reel_maintenance?: number;
+  fournitures_reel_maintenance?: number;
+  devis_signes_maintenance?: number;
+  retards_maintenance?: number;
+  // Devis à faire suite à intervention
+  devis_a_faire_count?: number;
+  devis_a_faire_total?: number;
+  devis_a_faire_items?: Array<{ label: string; client: string; montant_ht: number; intervention_date: string; days_since: number }>;
 }
 
 interface PLInvoice {
@@ -57,6 +73,7 @@ interface ManualHistoryEntry {
 }
 
 type Tab = "synthese" | "commercial" | "finance";
+type PoleFilter = "tous" | "maintenance" | "travaux";
 
 // ─── Catégorisation des charges fournisseurs ──────────────────────────────────
 
@@ -140,10 +157,10 @@ function Tooltip({ text }: { text: string }) {
       <span
         onMouseEnter={() => setShow(true)}
         onMouseLeave={() => setShow(false)}
-        style={{ fontSize: 10, width: 14, height: 14, borderRadius: "50%", border: "1.5px solid var(--text-muted)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "default", lineHeight: 1, fontWeight: 700, userSelect: "none", flexShrink: 0 }}
+        style={{ fontSize: 10, width: 15, height: 15, borderRadius: "50%", border: "1.5px solid var(--text-muted)", color: "var(--text-muted)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "default", lineHeight: 1, fontWeight: 700, userSelect: "none", flexShrink: 0 }}
       >i</span>
       {show && (
-        <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", background: "oklch(0.2 0.01 60)", color: "#fff", fontSize: 11, lineHeight: 1.45, padding: "7px 10px", borderRadius: 8, width: 220, zIndex: 100, whiteSpace: "pre-wrap", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)", background: "oklch(0.22 0.012 60)", color: "#fff", fontSize: 12, lineHeight: 1.6, padding: "10px 14px", borderRadius: 10, width: 250, zIndex: 200, whiteSpace: "pre-wrap", boxShadow: "0 6px 24px rgba(0,0,0,0.3)", pointerEvents: "none", fontWeight: 400 }}>
           {text}
         </div>
       )}
@@ -246,6 +263,16 @@ function CategoryCard({ cat, color, pctOfTotal, totalCharges, topSuppliers }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{label}</span>
+      <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
     </div>
   );
 }
@@ -387,6 +414,9 @@ const EMPTY_HISTORY_FORM = {
 export default function FinancesPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("synthese");
+  const [poleFilter, setPoleFilter] = useState<PoleFilter>("tous");
+  const [brouillonsOpen, setBrouillonsOpen] = useState(false);
+  const [devisAFaireOpen, setDevisAFaireOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [plLoading, setPlLoading] = useState(false);
 
@@ -492,6 +522,52 @@ export default function FinancesPage() {
   const chantiersTermines = interfastStats?.chantiers_termines ?? 0;
   const chantiersTotal = chantiersNonDemarre + chantiersEnCours + chantiersTermines;
   const objPct = caObj ? Math.min(Math.round((caReel / caObj) * 100), 100) : null;
+
+  // Brouillons
+  const brouillonsCount = interfastStats?.brouillons_count ?? 0;
+  const brouillonsTotal = interfastStats?.brouillons_total ?? 0;
+  const brouillonsOldestDays = interfastStats?.brouillons_oldest_days ?? 0;
+  const brouillonsItems = interfastStats?.brouillons_items ?? [];
+
+  // Devis à faire suite à intervention
+  const devisAFaireCount = interfastStats?.devis_a_faire_count ?? 0;
+  const devisAFaireTotal = interfastStats?.devis_a_faire_total ?? 0;
+  const devisAFaireItems = interfastStats?.devis_a_faire_items ?? [];
+
+  // Taux global : signés / (signés + refusés + en attente)
+  const totalDevisVersClients = devisSignesCount + devisRefusesCount + devisEnvoyesCount;
+  const tauxConversionGlobal = totalDevisVersClients > 0
+    ? Math.round((devisSignesCount / totalDevisVersClients) * 100) : null;
+
+  // CA potentiel perdu (refusés × valeur moyenne des devis décidés)
+  const avgDevisHT = (devisEnvoyesCount + devisSignesCount) > 0
+    ? (devisEnvoyesTotal + pipeline) / (devisEnvoyesCount + devisSignesCount) : 0;
+  const caPerduesEstimate = avgDevisHT * devisRefusesCount;
+
+  // Pôles d'activité — données brutes
+  const caReelMaintenance = interfastStats?.ca_reel_maintenance ?? 0;
+  const caPrevMaintenance = interfastStats?.ca_prev_maintenance ?? 0;
+  const moReelMaintenance = interfastStats?.mo_reel_maintenance ?? 0;
+  const fournituresReelMaintenance = interfastStats?.fournitures_reel_maintenance ?? 0;
+  const devisSignesMaintenance = interfastStats?.devis_signes_maintenance ?? 0;
+  const retardsMaintenance = interfastStats?.retards_maintenance ?? 0;
+  const caReelTravaux = Math.max(caReel - caReelMaintenance, 0);
+  const caPrevTravaux = Math.max(caPrev - caPrevMaintenance, 0);
+  const moReelTravaux = Math.max((interfastStats?.mo_reel ?? 0) - moReelMaintenance, 0);
+  const fournituresReelTravaux = Math.max((interfastStats?.fournitures_reel ?? 0) - fournituresReelMaintenance, 0);
+  const devisSignesTravaux = Math.max(pipeline - devisSignesMaintenance, 0);
+  const retardsTravaux = Math.max(retards - retardsMaintenance, 0);
+  const caMaintenancePct = caReel > 0 ? Math.round((caReelMaintenance / caReel) * 100) : 0;
+  const caTravauxPct = caReel > 0 ? 100 - caMaintenancePct : 0;
+  const hasPoleData = caReelMaintenance > 0;
+
+  // Valeurs filtrées par pôle sélectionné
+  const filteredCaReel = poleFilter === "maintenance" ? caReelMaintenance : poleFilter === "travaux" ? caReelTravaux : caReel;
+  const filteredCaPrev = poleFilter === "maintenance" ? caPrevMaintenance : poleFilter === "travaux" ? caPrevTravaux : caPrev;
+  const filteredPipeline = poleFilter === "maintenance" ? devisSignesMaintenance : poleFilter === "travaux" ? devisSignesTravaux : pipeline;
+  const filteredRetards = poleFilter === "maintenance" ? retardsMaintenance : poleFilter === "travaux" ? retardsTravaux : retards;
+  const filteredMo = poleFilter === "maintenance" ? moReelMaintenance : poleFilter === "travaux" ? moReelTravaux : (interfastStats?.mo_reel ?? 0);
+  const filteredFournitures = poleFilter === "maintenance" ? fournituresReelMaintenance : poleFilter === "travaux" ? fournituresReelTravaux : (interfastStats?.fournitures_reel ?? 0);
 
   const plCurrent = plHistory.find((h) => h.isCurrent) ?? null;
   const plPaid = plCurrentInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amountHT, 0);
@@ -655,15 +731,15 @@ export default function FinancesPage() {
 
                 {/* KPIs principaux */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                  <KPI label="CA Réalisé HT"
-                    tooltip="Chiffre d'affaires facturé sur l'exercice, hors taxes. Cumul de tous les chantiers facturés. Source : Interfast."
-                    value={fmt(caReel)} sub="Source Interfast" color="accent" delta={caGrowth} />
-                  <KPI label="CA Prévisionnel HT"
-                    tooltip="Estimation du CA total de l'exercice : chantiers terminés + en cours + planifiés. Recalculé à chaque synchro Interfast."
-                    value={fmt(caPrev)} sub="Total exercice estimé" />
+                  <KPI label="CA Facturé HT"
+                    tooltip="Chiffre d'affaires effectivement facturé à ce jour sur l'exercice — chantiers terminés et facturés. C'est ce qui a réellement été encaissé. Source : Interfast."
+                    value={fmt(caReel)} sub="Facturé à ce jour" color="accent" delta={caGrowth} />
+                  <KPI label="CA Projeté HT"
+                    tooltip="Estimation du CA total sur l'ensemble de l'exercice : inclut le CA déjà facturé + chantiers en cours + devis signés à planifier. Recalculé à chaque synchro Interfast."
+                    value={fmt(caPrev)} sub="Facturé + en cours + prévu" />
                   <KPI label="Reste à facturer"
-                    tooltip="Différence entre le CA prévisionnel et le CA déjà facturé. Ce qui sera encore facturé si tous les chantiers planifiés aboutissent."
-                    value={fmt(Math.max(caPrev - caReel, 0))} sub="Prévisionnel − facturé" />
+                    tooltip="Différence entre le CA projeté et le CA déjà facturé. Représente ce qui sera encore facturé d'ici la fin de l'exercice si tous les chantiers planifiés aboutissent."
+                    value={fmt(Math.max(caPrev - caReel, 0))} sub="Projeté − facturé" />
                 </div>
 
                 {/* Commercial + Finance côte à côte */}
@@ -688,7 +764,7 @@ export default function FinancesPage() {
                           </div>
                         )}
                         {[
-                          { label: "Pipeline signé", value: fmt(pipeline), sub: devisSignesCount > 0 ? `${devisSignesCount} devis` : undefined },
+                          { label: "Carnet de commandes", value: fmt(pipeline), sub: devisSignesCount > 0 ? `${devisSignesCount} devis signés` : undefined },
                           { label: "Devis envoyés", value: devisEnvoyesCount > 0 ? `${devisEnvoyesCount} devis` : "—", sub: devisEnvoyesTotal > 0 ? fmt(devisEnvoyesTotal) : undefined },
                           { label: "Impayés", value: fmt(retards), alert: retards > 0 },
                         ].map(({ label, value, sub, alert }) => (
@@ -737,7 +813,6 @@ export default function FinancesPage() {
                         {[
                           { label: "Charges fournisseurs", value: fmt(plChargesNettes), sub: `${plChargesCount} factures` },
                           { label: "Taux de charge", value: tauxCharges > 0 ? `${Math.round(tauxCharges)} %` : "—", alert: tauxCharges > 70 },
-                          { label: "Achats matériaux", value: fmt(interfastStats?.achats ?? 0) },
                         ].map(({ label, value, sub, alert }) => (
                           <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
                             <span style={{ color: "var(--text-muted)" }}>{label}</span>
@@ -890,9 +965,9 @@ export default function FinancesPage() {
             {/* ══ COMMERCIAL (Interfast) ══════════════════════════════════════ */}
             {tab === "commercial" && (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <SourceBadge source="interfast" />
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Activité commerciale — devis, chantiers, facturation · Interfast</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Activité commerciale · Interfast · Exercice {fy.label}</span>
                 </div>
 
                 {!interfastStats ? (
@@ -901,82 +976,137 @@ export default function FinancesPage() {
                   </div>
                 ) : (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                      <KPI label="CA Réalisé"
-                        tooltip="Chiffre d'affaires effectivement facturé sur l'exercice, toutes interventions et chantiers terminés confondus. Source Interfast."
-                        value={fmt(caReel)} sub="Chantiers facturés HT" color="accent" />
-                      <KPI label="CA Prévisionnel"
-                        tooltip="Estimation du CA total de l'exercice basée sur les chantiers planifiés, en cours et facturés. Recalculé par Interfast à chaque synchro."
-                        value={fmt(caPrev)} sub="Total exercice estimé" />
-                      <KPI label="Reste à facturer"
-                        tooltip="Différence entre le CA prévisionnel et le CA déjà facturé. Représente ce qui sera encore facturé d'ici la fin de l'exercice si tous les chantiers aboutissent."
-                        value={fmt(caPrev - caReel)} sub="En cours + prévu" />
-                      <KPI label="Pipeline signé"
-                        tooltip={devisSignesCount > 0 ? `${devisSignesCount} devis signés — travaux acceptés mais pas encore planifiés ou facturés. Représente le carnet de commandes garanti.` : "Devis signés par les clients — travaux acceptés mais pas encore planifiés ou facturés."}
-                        value={fmt(pipeline)} sub={devisSignesCount > 0 ? `${devisSignesCount} devis signés` : "Devis signés, à planifier"} color="blue" />
-                      <KPI label="Impayés"
-                        tooltip="Montant total des factures en retard de paiement à la date de synchro. À surveiller : un impayé élevé peut indiquer un risque de trésorerie."
-                        value={fmt(retards)} sub="Retards de paiement" color={retards > 0 ? "warn" : undefined} />
-                      <KPI label="Achats matériaux"
-                        tooltip="Valeur totale des achats de matériaux enregistrés dans Interfast pour cet exercice. Correspond aux fournitures commandées pour les chantiers."
-                        value={fmt(interfastStats.achats)} sub="Valeur achats Interfast" />
-                    </div>
+                    {/* ── SECTION 1 : Alertes & Actions ────────────────────────────── */}
+                    {(brouillonsCount > 0 || devisAFaireCount > 0) && (
+                      <>
+                        <SectionLabel label="Alertes & Actions" />
 
-                    {/* ── Pipeline funnel ───────────────────────────── */}
+                        {/* Brouillons — collapsible */}
+                        {brouillonsCount > 0 && (
+                          <div className="card" style={{ padding: 0, overflow: "hidden", borderLeft: `3px solid ${brouillonsOldestDays >= 30 ? "oklch(0.52 0.085 245)" : "var(--accent)"}` }}>
+                            <button onClick={() => setBrouillonsOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                                  Devis en brouillon{" "}
+                                  <span style={{ fontSize: 12, fontWeight: 500, color: brouillonsOldestDays >= 30 ? "oklch(0.52 0.085 245)" : "var(--accent)" }}>· {brouillonsCount} non envoyés</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                  {fmt(brouillonsTotal)} HT de CA potentiel
+                                  {brouillonsOldestDays >= 30 && <span style={{ color: "oklch(0.52 0.085 245)", fontWeight: 600 }}> · le plus ancien : {brouillonsOldestDays} jours</span>}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999, background: brouillonsOldestDays >= 30 ? "oklch(0.52 0.085 245 / 0.12)" : "var(--accent-soft)", color: brouillonsOldestDays >= 30 ? "oklch(0.52 0.085 245)" : "var(--accent)" }}>
+                                  {brouillonsOldestDays >= 30 ? "À traiter" : "Brouillons"}
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{brouillonsOpen ? "▲" : "▼"}</span>
+                              </div>
+                            </button>
+                            {brouillonsOpen && brouillonsItems.length > 0 && (
+                              <div style={{ borderTop: "1px solid var(--border)", padding: "0 18px" }}>
+                                {[...brouillonsItems].sort((a, b) => b.days - a.days).map((item, i) => {
+                                  const urgent = item.days >= 60;
+                                  const attention = item.days >= 30;
+                                  const ageColor = urgent ? "oklch(0.52 0.085 245)" : attention ? "oklch(0.62 0.12 55)" : "var(--text-muted)";
+                                  const ageBg = urgent ? "oklch(0.52 0.085 245 / 0.12)" : attention ? "oklch(0.62 0.12 55 / 0.12)" : "var(--surface-2)";
+                                  return (
+                                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < brouillonsItems.length - 1 ? "1px solid var(--border)" : "none" }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</div>
+                                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{item.client}</div>
+                                      </div>
+                                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>{fmt(item.montant_ht)}</span>
+                                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 999, flexShrink: 0, background: ageBg, color: ageColor }}>
+                                        {item.days === 0 ? "auj." : item.days === 1 ? "hier" : `${item.days} j`}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                                <div style={{ padding: "8px 0", display: "flex", justifyContent: "flex-end" }}>
+                                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{brouillonsCount} devis · {fmt(brouillonsTotal)} HT potentiel</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Devis à faire suite à intervention — collapsible */}
+                        {devisAFaireCount > 0 ? (
+                          <div className="card" style={{ padding: 0, overflow: "hidden", borderLeft: "3px solid oklch(0.52 0.1 295)" }}>
+                            <button onClick={() => setDevisAFaireOpen((v) => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                                  Devis à établir{" "}
+                                  <span style={{ fontSize: 12, fontWeight: 500, color: "oklch(0.52 0.1 295)" }}>· suite à intervention</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                  {devisAFaireCount} intervention(s) en attente de chiffrage
+                                  {devisAFaireTotal > 0 && ` · ${fmt(devisAFaireTotal)} HT estimé`}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999, background: "oklch(0.52 0.1 295 / 0.12)", color: "oklch(0.52 0.1 295)" }}>
+                                  À chiffrer
+                                </span>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{devisAFaireOpen ? "▲" : "▼"}</span>
+                              </div>
+                            </button>
+                            {devisAFaireOpen && devisAFaireItems.length > 0 && (
+                              <div style={{ borderTop: "1px solid var(--border)", padding: "0 18px" }}>
+                                {devisAFaireItems.map((item, i) => (
+                                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < devisAFaireItems.length - 1 ? "1px solid var(--border)" : "none" }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</div>
+                                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{item.client} · Intervention : {item.intervention_date}</div>
+                                    </div>
+                                    {item.montant_ht > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>{fmt(item.montant_ht)}</span>}
+                                    <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 999, flexShrink: 0, background: "oklch(0.52 0.1 295 / 0.1)", color: "oklch(0.52 0.1 295)" }}>
+                                      {item.days_since === 0 ? "auj." : item.days_since === 1 ? "hier" : `${item.days_since} j`}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="card" style={{ padding: "12px 18px", borderLeft: "3px solid var(--border)", opacity: 0.65 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Devis à établir · suite à intervention</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Aucune intervention en attente de chiffrage · données non synchronisées</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── SECTION 2 : Statistiques commerciales ────────────────────── */}
+                    <SectionLabel label="Statistiques commerciales" />
+
                     {devisEnvoyesCount > 0 && (
                       <div className="card" style={{ padding: "18px 20px" }}>
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 700 }}>Pipeline commercial — Entonnoir devis</div>
-                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>De l'envoi du devis à la facturation</div>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>Entonnoir de conversion</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Exercice en cours</div>
                           </div>
-                          {tauxTransformation !== null && (
+                          {tauxConversionGlobal !== null && (
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 22, fontWeight: 800, color: tauxTransformation >= 30 ? "oklch(0.55 0.085 155)" : tauxTransformation >= 20 ? "var(--accent)" : "oklch(0.52 0.085 245)" }}>
-                                {tauxTransformation} %
+                              <div style={{ fontSize: 24, fontWeight: 800, color: tauxConversionGlobal >= 15 ? "oklch(0.55 0.085 155)" : tauxConversionGlobal >= 10 ? "var(--accent)" : "oklch(0.52 0.085 245)" }}>
+                                {tauxConversionGlobal} %
                               </div>
-                              <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
-                                Taux de transfo <Tooltip text={`Sur ${devisDecides} devis avec décision (signés + refusés), ${devisSignesCount} ont été signés. Taux = ${devisSignesCount}/${devisDecides} = ${tauxTransformation} %. Les ${devisEnvoyesCount - devisDecides} restants sont encore en attente de réponse.`} />
+                              <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                                Taux de conversion <Tooltip text={`${devisSignesCount} devis signés sur ${totalDevisVersClients} envoyés aux clients (y compris ceux en attente et refusés).\nTaux = ${devisSignesCount} / ${totalDevisVersClients} = ${tauxConversionGlobal} %.\n\nTaux parmi les décidés seulement : ${tauxTransformation ?? "—"} % (${devisSignesCount} signés / ${devisDecides} décidés).`} />
                               </div>
+                              {tauxTransformation !== null && (
+                                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{tauxTransformation} % parmi les décidés</div>
+                              )}
                             </div>
                           )}
                         </div>
-
-                        {/* Funnel steps */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {[
-                            {
-                              label: "Devis envoyés",
-                              count: devisEnvoyesCount,
-                              amount: devisEnvoyesTotal,
-                              color: "oklch(0.52 0.085 245)",
-                              width: 100,
-                              tooltip: `${devisEnvoyesCount} devis ont été envoyés à des clients sur cet exercice, pour un montant total de ${fmt(devisEnvoyesTotal)} HT. C'est le volume total de prospection commerciale.`,
-                            },
-                            {
-                              label: "Devis signés",
-                              count: devisSignesCount,
-                              amount: pipeline,
-                              color: "var(--accent)",
-                              width: devisEnvoyesCount > 0 ? Math.round((devisSignesCount / devisEnvoyesCount) * 100) : 0,
-                              tooltip: `${devisSignesCount} devis ont été acceptés et signés par les clients, pour ${fmt(pipeline)} HT. Ce montant correspond au carnet de commandes garanti — travaux à réaliser.`,
-                            },
-                            {
-                              label: "Chantiers en cours",
-                              count: chantiersEnCours,
-                              amount: null,
-                              color: "oklch(0.55 0.085 155)",
-                              width: devisEnvoyesCount > 0 ? Math.round((chantiersEnCours / devisEnvoyesCount) * 100) : 0,
-                              tooltip: `${chantiersEnCours} chantiers sont actuellement en cours d'exécution. ${chantiersNonDemarre} sont planifiés mais pas encore démarrés. ${chantiersTermines} sont terminés sur l'exercice.`,
-                            },
-                            {
-                              label: "CA facturé",
-                              count: null,
-                              amount: caReel,
-                              color: "oklch(0.55 0.085 155)",
-                              width: devisEnvoyesTotal > 0 ? Math.min(Math.round((caReel / devisEnvoyesTotal) * 100), 100) : 0,
-                              tooltip: `${fmt(caReel)} HT effectivement facturés sur l'exercice. Rapporté au pipe total de ${fmt(devisEnvoyesTotal)}, cela représente ${devisEnvoyesTotal > 0 ? Math.round((caReel / devisEnvoyesTotal) * 100) : 0} % du volume de devis envoyés.`,
-                            },
+                            { label: "Devis envoyés", count: devisEnvoyesCount, amount: devisEnvoyesTotal, color: "oklch(0.52 0.085 245)", width: 100, tooltip: `${devisEnvoyesCount} devis envoyés aux clients sur cet exercice · ${fmt(devisEnvoyesTotal)} HT total.` },
+                            { label: "Devis signés", count: devisSignesCount, amount: pipeline, color: "var(--accent)", width: devisEnvoyesCount > 0 ? Math.round((devisSignesCount / devisEnvoyesCount) * 100) : 0, tooltip: `${devisSignesCount} devis acceptés et signés pour ${fmt(pipeline)} HT — carnet de commandes garanti.` },
+                            { label: "Chantiers en cours", count: chantiersEnCours, amount: null, color: "oklch(0.55 0.085 155)", width: devisEnvoyesCount > 0 ? Math.round((chantiersEnCours / devisEnvoyesCount) * 100) : 0, tooltip: `${chantiersEnCours} chantiers en cours · ${chantiersNonDemarre} planifiés · ${chantiersTermines} terminés.` },
+                            { label: "CA facturé", count: null, amount: caReel, color: "oklch(0.55 0.085 155)", width: devisEnvoyesTotal > 0 ? Math.min(Math.round((caReel / devisEnvoyesTotal) * 100), 100) : 0, tooltip: `${fmt(caReel)} HT facturés sur l'exercice — soit ${devisEnvoyesTotal > 0 ? Math.round((caReel / devisEnvoyesTotal) * 100) : 0} % du pipe total.` },
                           ].map((step, i) => (
                             <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                               <div style={{ width: 130, flexShrink: 0, display: "flex", alignItems: "center", gap: 5 }}>
@@ -994,47 +1124,93 @@ export default function FinancesPage() {
                             </div>
                           ))}
                         </div>
-
-                        {/* Devis refusés */}
-                        {devisRefusesCount > 0 && (
-                          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 20, flexWrap: "wrap" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                              <strong style={{ color: "oklch(0.52 0.085 245)" }}>{devisRefusesCount}</strong> devis refusés
-                            </div>
-                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                              <strong>{devisEnvoyesCount - devisSignesCount - devisRefusesCount}</strong> devis en attente de réponse
-                            </div>
+                        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: caPerduesEstimate > 0 ? 10 : 0 }}>
+                            {devisRefusesCount > 0 && (
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}><strong style={{ color: "oklch(0.52 0.085 245)" }}>{devisRefusesCount}</strong> devis refusés</span>
+                            )}
+                            {devisEnvoyesCount > 0 && (
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}><strong>{devisEnvoyesCount}</strong> en attente de réponse</span>
+                            )}
                             {chantiersTotal > 0 && (
-                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                Chantiers : <strong style={{ color: "oklch(0.52 0.085 245)" }}>{chantiersNonDemarre}</strong> à démarrer · <strong style={{ color: "var(--accent)" }}>{chantiersEnCours}</strong> en cours · <strong style={{ color: "oklch(0.55 0.085 155)" }}>{chantiersTermines}</strong> terminés
-                              </div>
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                <strong style={{ color: "oklch(0.52 0.085 245)" }}>{chantiersNonDemarre}</strong> à démarrer · <strong style={{ color: "var(--accent)" }}>{chantiersEnCours}</strong> en cours · <strong style={{ color: "oklch(0.55 0.085 155)" }}>{chantiersTermines}</strong> terminés
+                              </span>
                             )}
                           </div>
-                        )}
+                          {caPerduesEstimate > 0 && devisRefusesCount > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "oklch(0.52 0.085 245 / 0.06)", borderRadius: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>CA potentiel non signé</span>
+                                <Tooltip text={`Estimation du CA qui aurait pu être généré si les ${devisRefusesCount} devis refusés avaient été signés.\nValeur moyenne d'un devis : ${fmt(Math.round(avgDevisHT))}.\nEstimation — les devis refusés peuvent avoir des valeurs très différentes.`} />
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <span style={{ fontSize: 16, fontWeight: 800, color: "oklch(0.52 0.085 245)" }}>{fmt(caPerduesEstimate)}</span>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>estimé · {devisRefusesCount} devis refusés</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
-                    {/* Répartition */}
+                    {/* ── SECTION 3 : CA Vendu & Plan de charge ────────────────────── */}
+                    <SectionLabel label="CA Vendu & Plan de charge" />
+
+                    {hasPoleData && (
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", gap: 4, background: "var(--surface-2)", borderRadius: 10, padding: 3 }}>
+                          {([
+                            { id: "tous" as PoleFilter, label: "Tous les pôles" },
+                            { id: "maintenance" as PoleFilter, label: "Maintenance" },
+                            { id: "travaux" as PoleFilter, label: "Travaux & Installation" },
+                          ]).map((p) => (
+                            <button key={p.id} onClick={() => setPoleFilter(p.id)} style={{
+                              padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
+                              fontWeight: poleFilter === p.id ? 600 : 400,
+                              background: poleFilter === p.id ? "var(--surface)" : "transparent",
+                              color: poleFilter === p.id ? "var(--accent)" : "var(--text-muted)",
+                              boxShadow: poleFilter === p.id ? "0 1px 4px rgba(40,30,20,0.1)" : "none",
+                              transition: "all 0.15s",
+                            }}>{p.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                      <KPI label="CA Facturé HT"
+                        tooltip="Chiffre d'affaires effectivement facturé à ce jour sur l'exercice. Source Interfast."
+                        value={fmt(filteredCaReel)} sub={poleFilter === "tous" ? "Facturé à ce jour" : `Pôle ${poleFilter}`} color="accent" />
+                      <KPI label="CA Projeté fin exercice"
+                        tooltip="CA facturé + chantiers en cours + devis signés à planifier. Recalculé à chaque synchro Interfast."
+                        value={fmt(filteredCaPrev)} sub="Facturé + en cours + prévu" />
+                      <KPI label="Carnet de commandes"
+                        tooltip="Devis signés par les clients — travaux commandés mais pas encore planifiés ou facturés."
+                        value={fmt(filteredPipeline)} sub={devisSignesCount > 0 && poleFilter === "tous" ? `${devisSignesCount} devis signés` : "Devis signés"} color="blue" />
+                      <KPI label="Impayés"
+                        tooltip="Montant total des factures en retard de paiement à la date de synchro."
+                        value={fmt(filteredRetards)} sub="Retards de paiement" color={filteredRetards > 0 ? "warn" : undefined} />
+                    </div>
+
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                       <div className="card" style={{ padding: "16px 18px" }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Répartition du CA réalisé</div>
-                        <CostRow label="Main d'œuvre" value={interfastStats.mo_reel} total={caReel} color="var(--accent)" />
-                        <CostRow label="Fournitures" value={interfastStats.fournitures_reel} total={caReel} color="oklch(0.52 0.1 295)" />
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Répartition du CA facturé</div>
+                        <CostRow label="Main d'œuvre" value={filteredMo} total={filteredCaReel} color="var(--accent)" />
+                        <CostRow label="Fournitures" value={filteredFournitures} total={filteredCaReel} color="oklch(0.52 0.1 295)" />
                         <div style={{ paddingTop: 10, borderTop: "1px solid var(--border)", marginTop: 4 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                             <span style={{ color: "var(--text-muted)" }}>Ratio MO / CA</span>
-                            <strong>{pct(interfastStats.mo_reel, caReel)}</strong>
+                            <strong>{pct(filteredMo, filteredCaReel)}</strong>
                           </div>
                         </div>
                       </div>
-
                       <div className="card" style={{ padding: "16px 18px" }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Indicateurs activité</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Indicateurs clés</div>
                         {[
                           { label: "Taux réalisation CA", value: pct(caReel, caPrev) },
-                          { label: "Pipeline / CA réalisé", value: pct(pipeline, caReel) },
+                          { label: "Carnet / CA réalisé", value: pct(pipeline, caReel) },
                           { label: "Impayés / CA réalisé", value: pct(retards, caReel) },
-                          { label: "Achats / CA prévisionnel", value: pct(interfastStats.achats, caPrev) },
                           { label: "TVA collectée", value: fmt(interfastStats.tva_reel) },
                         ].map(({ label, value }) => (
                           <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
@@ -1044,6 +1220,73 @@ export default function FinancesPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* ── SECTION 4 : Analyse par pôle ─────────────────────────────── */}
+                    {hasPoleData && (
+                      <>
+                        <SectionLabel label="Analyse par pôle" />
+                        <div className="card" style={{ padding: "16px 18px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>Répartition Maintenance / Travaux</div>
+                            <SourceBadge source="interfast" />
+                          </div>
+                          <div style={{ display: "flex", height: 28, borderRadius: 8, overflow: "hidden", gap: 2, marginBottom: 16 }}>
+                            <div style={{ flex: caReelMaintenance, background: "oklch(0.52 0.085 245 / 0.75)", display: "flex", alignItems: "center", justifyContent: "center", minWidth: "15%" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>Maintenance · {caMaintenancePct} %</span>
+                            </div>
+                            <div style={{ flex: caReelTravaux, background: "var(--accent)", opacity: 0.85, display: "flex", alignItems: "center", justifyContent: "center", minWidth: "15%" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>Travaux · {caTravauxPct} %</span>
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            {/* Maintenance */}
+                            <div style={{ padding: "14px 16px", background: "var(--surface-2)", borderRadius: 12, borderLeft: "3px solid oklch(0.52 0.085 245)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "oklch(0.52 0.085 245)", flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Maintenance</span>
+                                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>· Contrats & entretiens</span>
+                              </div>
+                              {[
+                                { label: "CA facturé", value: fmt(caReelMaintenance), accent: "oklch(0.52 0.085 245)" },
+                                { label: "CA projeté", value: fmt(caPrevMaintenance) },
+                                { label: "Carnet", value: fmt(devisSignesMaintenance) },
+                                { label: "Impayés", value: fmt(retardsMaintenance), warn: retardsMaintenance > 0 },
+                                { label: "Main d'œuvre", value: fmt(moReelMaintenance) },
+                                { label: "Fournitures", value: fmt(fournituresReelMaintenance) },
+                              ].map(({ label, value, accent, warn }) => (
+                                <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                                  <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                                  <strong style={{ color: warn ? "oklch(0.52 0.085 245)" : accent ?? "var(--text)" }}>{value}</strong>
+                                </div>
+                              ))}
+                              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>Ratio MO : <strong>{pct(moReelMaintenance, caReelMaintenance)}</strong></div>
+                            </div>
+                            {/* Travaux */}
+                            <div style={{ padding: "14px 16px", background: "var(--surface-2)", borderRadius: 12, borderLeft: "3px solid var(--accent)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Travaux & Installation</span>
+                                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>· Chantiers & équipements</span>
+                              </div>
+                              {[
+                                { label: "CA facturé", value: fmt(caReelTravaux), accent: "var(--accent)" },
+                                { label: "CA projeté", value: fmt(caPrevTravaux) },
+                                { label: "Carnet", value: fmt(devisSignesTravaux) },
+                                { label: "Impayés", value: fmt(retardsTravaux), warn: retardsTravaux > 0 },
+                                { label: "Main d'œuvre", value: fmt(moReelTravaux) },
+                                { label: "Fournitures", value: fmt(fournituresReelTravaux) },
+                              ].map(({ label, value, accent, warn }) => (
+                                <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
+                                  <span style={{ color: "var(--text-muted)" }}>{label}</span>
+                                  <strong style={{ color: warn ? "oklch(0.52 0.085 245)" : accent ?? "var(--text)" }}>{value}</strong>
+                                </div>
+                              ))}
+                              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>Ratio MO : <strong>{pct(moReelTravaux, caReelTravaux)}</strong></div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {interfastStats.synced_at && (
                       <p style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right" }}>
