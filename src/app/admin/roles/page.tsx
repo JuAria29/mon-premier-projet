@@ -143,17 +143,34 @@ export default function AdminRolesPage() {
                   Cliquez sur un niveau pour modifier
                 </div>
               </div>
-              <button
-                onClick={handleSave}
-                disabled={saving || selectedRole.slug === "dirigeant"}
-                style={{
-                  padding: "8px 18px", borderRadius: 10, border: "none", cursor: selectedRole.slug === "dirigeant" ? "not-allowed" : "pointer",
-                  background: saved ? "#e6f4ed" : "var(--accent)", color: saved ? "#16a34a" : "white",
-                  fontSize: 13, fontWeight: 700, opacity: selectedRole.slug === "dirigeant" ? 0.4 : 1,
-                }}
-              >
-                {saving ? "Sauvegarde…" : saved ? "✓ Sauvegardé" : "Sauvegarder"}
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                {selectedRole.slug !== "dirigeant" && (
+                  <button
+                    onClick={() => {
+                      localStorage.setItem("aria-preview-role", selectedRole.slug);
+                      localStorage.setItem("aria-preview-role-name", selectedRole.name);
+                      router.push("/");
+                    }}
+                    style={{
+                      padding: "8px 16px", borderRadius: 10, border: "1.5px solid #f59e0b",
+                      background: "#fffbeb", color: "#92400e", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    }}
+                  >
+                    👁 Simuler cette vue
+                  </button>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || selectedRole.slug === "dirigeant"}
+                  style={{
+                    padding: "8px 18px", borderRadius: 10, border: "none", cursor: selectedRole.slug === "dirigeant" ? "not-allowed" : "pointer",
+                    background: saved ? "#e6f4ed" : "var(--accent)", color: saved ? "#16a34a" : "white",
+                    fontSize: 13, fontWeight: 700, opacity: selectedRole.slug === "dirigeant" ? 0.4 : 1,
+                  }}
+                >
+                  {saving ? "Sauvegarde…" : saved ? "✓ Sauvegardé" : "Sauvegarder"}
+                </button>
+              </div>
             </div>
             {selectedRole.slug === "dirigeant" && (
               <div style={{ margin: "12px 24px", padding: "10px 14px", borderRadius: 10, background: "var(--accent-soft)", fontSize: 12, color: "var(--accent-strong)" }}>

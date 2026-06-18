@@ -17,7 +17,11 @@ export function usePermissions(): UsePermissionsResult {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/me")
+    const simulateRole = typeof window !== "undefined"
+      ? localStorage.getItem("aria-preview-role")
+      : null;
+    const url = simulateRole ? `/api/me?simulate=${encodeURIComponent(simulateRole)}` : "/api/me";
+    fetch(url)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: UserProfile | null) => {
         setProfile(data);

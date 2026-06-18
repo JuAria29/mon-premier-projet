@@ -18,9 +18,35 @@ export async function GET(req: NextRequest) {
       userId = data.user?.id ?? null;
     }
 
-    // Fallback : si pas de session, retourne le profil dirigeant par défaut
-    // (phase transitoire — à supprimer une fois l'auth multi-user activée)
     if (!userId) {
+      // Mode simulation : le Dirigeant prévisualise un autre rôle
+      const simulateSlug = req.nextUrl.searchParams.get("simulate");
+      if (simulateSlug && simulateSlug !== "dirigeant") {
+        const { data: role } = await supabase
+          .from("roles")
+          .select("id, name, slug, color, is_system, role_permissions(module_id, level)")
+          .eq("slug", simulateSlug)
+          .single();
+
+        if (role) {
+          const permissions: Record<string, PermissionLevel> = {};
+          for (const perm of (role as any).role_permissions ?? []) {
+            permissions[perm.module_id] = perm.level;
+          }
+          return NextResponse.json({
+            id: "preview",
+            full_name: `Prévisualisation : ${role.name}`,
+            email: null,
+            role: {
+              id: role.id, name: role.name, slug: role.slug,
+              color: (role as any).color, is_system: (role as any).is_system,
+            },
+            permissions,
+          });
+        }
+      }
+
+      // Fallback : profil dirigeant par défaut (phase transitoire)
       return NextResponse.json({
         id: "local",
         full_name: "Julien Pasini",

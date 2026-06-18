@@ -43,7 +43,8 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
   const displayName = profile?.full_name ?? userName;
   const roleLabel = profile?.role?.name ?? "Admin";
 
-  const visibleNavItems = navItems.filter((item) => can(item.module));
+  // "own" = accès à ses propres données — suffit pour afficher l'onglet
+  const visibleNavItems = navItems.filter((item) => can(item.module, "own"));
 
   return (
     <aside className={`sidebar${isOpen ? " sidebar-open" : ""}`}>
