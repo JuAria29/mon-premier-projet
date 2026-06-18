@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Icon } from "@/components/ui/Icons";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Workspace } from "@/types";
@@ -30,6 +31,7 @@ const navItems: { id: NavItem; label: string; icon: Parameters<typeof Icon>[0]["
 
 export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, userName, onSettingsOpen, isOpen, onClose }: SidebarProps) {
   const { profile, can, isDirigeant } = usePermissions();
+  const [financeOpen, setFinanceOpen] = useState(() => activeNav.startsWith("finances"));
 
   const initiales = (profile?.full_name ?? userName)
     .split(" ")
@@ -82,15 +84,29 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
         {visibleNavItems.map((item) => (
           <div key={item.id}>
             <button
-              className={`nav-item${activeNav === item.id || (item.id === "finances" && activeNav.startsWith("finances")) ? " active" : ""}`}
-              onClick={() => onNavChange(item.id)}
+              className={`nav-item${item.id === "finances"
+                ? (financeOpen || activeNav.startsWith("finances")) ? " active" : ""
+                : activeNav === item.id ? " active" : ""
+              }`}
+              onClick={() => {
+                if (item.id === "finances") {
+                  setFinanceOpen((v) => !v);
+                } else {
+                  onNavChange(item.id);
+                }
+              }}
             >
               <Icon name={item.icon} size={16} />
               <span>{item.label}</span>
+              {item.id === "finances" && (
+                <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.5 }}>
+                  {financeOpen || activeNav.startsWith("finances") ? "▲" : "▼"}
+                </span>
+              )}
             </button>
 
             {/* Sous-navigation Finance */}
-            {item.id === "finances" && activeNav.startsWith("finances") && (
+            {item.id === "finances" && (financeOpen || activeNav.startsWith("finances")) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 2, marginBottom: 4 }}>
                 <button
                   onClick={() => onNavChange("finances-synthese")}
