@@ -5,7 +5,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import type { Workspace } from "@/types";
 import type { ModuleId } from "@/lib/permissions";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin" | "admin-roles";
 
 interface SidebarProps {
   workspace: Workspace;
@@ -89,15 +89,25 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
             <span>{item.label}</span>
           </button>
         ))}
-        {/* Gestion des rôles — admin seulement */}
+        {/* Section admin — dirigeant seulement */}
         {isDirigeant && (
-          <button
-            className={`nav-item${activeNav === "admin" ? " active" : ""}`}
-            onClick={() => onNavChange("admin")}
-          >
-            <Icon name="gear" size={16} />
-            <span>Utilisateurs</span>
-          </button>
+          <>
+            <div style={{ height: 1, background: "var(--border)", margin: "8px 4px" }} />
+            <button
+              className={`nav-item${activeNav === "admin" ? " active" : ""}`}
+              onClick={() => onNavChange("admin")}
+            >
+              <Icon name="tasks" size={16} />
+              <span>Utilisateurs</span>
+            </button>
+            <button
+              className={`nav-item${activeNav === "admin-roles" ? " active" : ""}`}
+              onClick={() => onNavChange("admin-roles")}
+            >
+              <Icon name="gear" size={16} />
+              <span>Rôles</span>
+            </button>
+          </>
         )}
       </nav>
 

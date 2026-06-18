@@ -15,7 +15,7 @@ import { CoachExchange } from "@/components/dashboard/CoachExchange";
 import { mockData } from "@/lib/mockData";
 import type { Session, Workspace, Layout, Density, Task, AppSettings, Objective, ObjectiveLevel } from "@/types";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin" | "admin-roles";
 
 const LEVEL_LABELS: Record<ObjectiveLevel, string> = {
   jour: "Aujourd'hui",
@@ -120,7 +120,8 @@ export default function DashboardPage() {
     else if (nav === "notes") router.push("/notes");
     else if (nav === "agenda") router.push("/agenda");
     else if (nav === "finances") router.push("/finances");
-    else if (nav === "admin") router.push("/admin/roles");
+    else if (nav === "admin") router.push("/admin/utilisateurs");
+    else if (nav === "admin-roles") router.push("/admin/roles");
   }
 
   function handleToggle(id: string) {
