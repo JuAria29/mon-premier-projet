@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aria Coach — Architecture des rôles</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --accent: #b5612f;
+    --accent-soft: #f5ede6;
+    --accent-strong: #8a4620;
+    --bg: oklch(0.985 0.005 75);
+    --surface: #ffffff;
+    --surface2: oklch(0.972 0.006 75);
+    --border: oklch(0.918 0.006 70);
+    --text: oklch(0.28 0.014 60);
+    --text-soft: oklch(0.37 0.012 60);
+    --text-muted: oklch(0.545 0.012 60);
+    --blue: oklch(0.52 0.085 245);
+    --blue-soft: #e8f0f8;
+    --green: oklch(0.55 0.085 155);
+    --green-soft: #e6f4ed;
+    --purple: oklch(0.52 0.1 295);
+    --purple-soft: #ede8f5;
+    --orange: oklch(0.62 0.1 55);
+    --orange-soft: #fdf0e3;
+    --teal: oklch(0.55 0.08 190);
+    --teal-soft: #e3f5f4;
+    --radius-card: 16px;
+    --shadow: 0 2px 12px rgba(40,30,20,0.08);
+    --shadow-md: 0 4px 24px rgba(40,30,20,0.12);
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 24px 80px;
+  }
+
+  /* ── Header ── */
+  .page-header { text-align: center; margin-bottom: 56px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .brand-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: var(--accent); color: white;
+    font-size: 18px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-name { font-size: 22px; font-weight: 700; }
+  .brand-name span { color: var(--accent); }
+  .page-title { font-size: 32px; font-weight: 800; line-height: 1.2; }
+  .page-sub { font-size: 15px; color: var(--text-muted); margin-top: 8px; max-width: 560px; margin-left: auto; margin-right: auto; }
+
+  /* ── Section headers ── */
+  .section-title { text-align: center; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .section-sub { text-align: center; font-size: 14px; color: var(--text-muted); margin-bottom: 36px; }
+
+  /* ── Personas grid ── */
+  .personas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto 64px; }
+
+  .persona-card {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    border: 1.5px solid var(--border);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .persona-header { padding: 20px 22px 16px; border-bottom: 1px solid var(--border); }
+  .persona-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 11px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 10px;
+  }
+  .badge-dirigeant   { background: var(--accent-soft);  color: var(--accent-strong); }
+  .badge-resp-com    { background: var(--blue-soft);     color: var(--blue); }
+  .badge-commercial  { background: #dbeafe;              color: #1e4faa; }
+  .badge-assistante  { background: var(--teal-soft);     color: var(--teal); }
+  .badge-technicien  { background: var(--green-soft);    color: var(--green); }
+  .badge-comptable   { background: var(--purple-soft);   color: var(--purple); }
+
+  .persona-name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .persona-desc { font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+  .persona-body { padding: 18px 22px; }
+
+  .module-group { margin-bottom: 16px; }
+  .module-group:last-child { margin-bottom: 0; }
+  .module-group-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 7px;
+  }
+  .module-list { display: flex; flex-direction: column; gap: 5px; }
+  .module-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 11px; border-radius: 9px;
+    font-size: 12px; font-weight: 500;
+    background: var(--surface2); border: 1px solid var(--border);
+  }
+  .module-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-full   { background: var(--accent); }
+  .dot-read   { background: var(--blue); }
+  .dot-own    { background: var(--green); }
+  .dot-write  { background: var(--teal); }
+  .dot-fin    { background: var(--purple); }
+  .dot-none   { background: var(--border); }
+
+  .module-item.locked { opacity: 0.38; text-decoration: line-through; background: none; }
+  .access-tag {
+    margin-left: auto; font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+  }
+  .tag-full  { background: var(--accent-soft);  color: var(--accent-strong); }
+  .tag-read  { background: var(--blue-soft);     color: var(--blue); }
+  .tag-own   { background: var(--green-soft);    color: var(--green); }
+  .tag-write { background: var(--teal-soft);     color: var(--teal); }
+  .tag-fin   { background: var(--purple-soft);   color: var(--purple); }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; gap: 20px; justify-content: center;
+    flex-wrap: wrap; margin-bottom: 64px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-soft); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── Permission matrix ── */
+  .matrix-wrap { max-width: 1100px; margin: 0 auto 64px; overflow-x: auto; }
+  .matrix-table { width: 100%; border-collapse: collapse; }
+  .matrix-table th, .matrix-table td {
+    padding: 10px 14px; text-align: center;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .matrix-table th { font-weight: 700; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; background: var(--surface2); }
+  .matrix-table th.module-col { text-align: left; }
+  .matrix-table td.module-col { text-align: left; font-weight: 600; color: var(--text); }
+  .matrix-table tr:last-child td { border-bottom: none; }
+  .matrix-table tr:hover td { background: var(--surface2); }
+
+  .cell {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 3px 9px; border-radius: 7px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .cell-full  { background: var(--accent-soft);  color: var(--accent-strong); }
+  .cell-read  { background: var(--blue-soft);     color: var(--blue); }
+  .cell-own   { background: var(--green-soft);    color: var(--green); }
+  .cell-write { background: var(--teal-soft);     color: var(--teal); }
+  .cell-fin   { background: var(--purple-soft);   color: var(--purple); }
+  .cell-none  { background: var(--surface2);      color: var(--text-muted); }
+
+  .matrix-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .matrix-card-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .matrix-card-title { font-size: 15px; font-weight: 700; }
+  .matrix-card-sub { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Role editor mockup ── */
+  .editor-wrap { max-width: 900px; margin: 0 auto 64px; }
+  .editor-shell {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+  }
+  .editor-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .editor-title { font-size: 15px; font-weight: 700; }
+  .editor-subtitle { font-size: 12px; color: var(--text-muted); }
+  .editor-btn {
+    margin-left: auto; padding: 7px 16px; border-radius: 9px;
+    background: var(--accent); color: white;
+    font-size: 12px; font-weight: 700; border: none; cursor: pointer;
+  }
+  .editor-body { display: grid; grid-template-columns: 220px 1fr; }
+  .editor-sidebar {
+    background: var(--surface2); border-right: 1px solid var(--border);
+    padding: 16px 12px;
+  }
+  .editor-sidebar-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text-muted);
+    padding: 4px 8px; margin-bottom: 6px;
+  }
+  .editor-role-item {
+    padding: 9px 12px; border-radius: 9px;
+    font-size: 12px; font-weight: 500; color: var(--text-soft);
+    display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+    cursor: pointer;
+  }
+  .editor-role-item.active {
+    background: var(--accent-soft); color: var(--accent); font-weight: 700;
+  }
+  .editor-role-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .editor-new {
+    padding: 8px 12px; border-radius: 9px; margin-top: 8px;
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    border: 1.5px dashed var(--border); text-align: center; cursor: pointer;
+  }
+  .editor-main { padding: 24px; }
+  .editor-field { margin-bottom: 20px; }
+  .editor-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .editor-input {
+    width: 100%; padding: 9px 14px; border-radius: 9px;
+    border: 1.5px solid var(--border); background: var(--surface2);
+    font-size: 13px; font-family: inherit; color: var(--text);
+  }
+  .perm-grid { display: flex; flex-direction: column; gap: 8px; }
+  .perm-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+  }
+  .perm-module { font-size: 12px; font-weight: 600; width: 150px; flex-shrink: 0; }
+  .perm-options { display: flex; gap: 4px; flex-wrap: wrap; }
+  .perm-opt {
+    padding: 3px 10px; border-radius: 7px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    border: 1.5px solid transparent;
+  }
+  .perm-opt.selected-full  { background: var(--accent-soft);  color: var(--accent-strong);  border-color: var(--accent); }
+  .perm-opt.selected-read  { background: var(--blue-soft);     color: var(--blue);           border-color: var(--blue); }
+  .perm-opt.selected-own   { background: var(--green-soft);    color: var(--green);          border-color: var(--green); }
+  .perm-opt.selected-write { background: var(--teal-soft);     color: var(--teal);           border-color: var(--teal); }
+  .perm-opt.unselected { background: var(--surface); color: var(--text-muted); border-color: var(--border); }
+
+  /* ── Roadmap ── */
+  .roadmap-wrap { max-width: 900px; margin: 0 auto 64px; }
+  .roadmap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .roadmap-card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .roadmap-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .roadmap-num {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 13px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .roadmap-card-title { font-size: 14px; font-weight: 700; }
+  .roadmap-items { display: flex; flex-direction: column; gap: 7px; }
+  .roadmap-item {
+    font-size: 12px; color: var(--text-soft);
+    display: flex; align-items: flex-start; gap: 7px; line-height: 1.5;
+  }
+  .roadmap-item::before { content: "→"; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+
+  /* ── Market ── */
+  .market-wrap { max-width: 900px; margin: 0 auto; }
+  .market-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .mkt-card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius-card); padding: 22px; box-shadow: var(--shadow); text-align: center;
+  }
+  .mkt-num { font-size: 36px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+  .mkt-label { font-size: 12px; font-weight: 600; color: var(--text-soft); line-height: 1.5; }
+
+  @media (max-width: 860px) {
+    .personas { grid-template-columns: 1fr; }
+    .roadmap-grid { grid-template-columns: 1fr; }
+    .market-grid { grid-template-columns: 1fr; }
+    .editor-body { grid-template-columns: 1fr; }
+    .editor-sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header class="page-header">
+  <div class="brand">
+    <div class="brand-icon">A</div>
+    <div class="brand-name">Aria <span>Coach</span></div>
+  </div>
+  <h1 class="page-title">Architecture des rôles</h1>
+  <p class="page-sub">6 profils, des permissions granulaires — chacun voit exactement ce dont il a besoin.</p>
+</header>
+
+<!-- ── Personas ── -->
+<div class="personas">
+
+  <!-- Dirigeant -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-dirigeant">👑 Dirigeant</div>
+      <div class="persona-name">Julien Pasini</div>
+      <div class="persona-desc">Vision stratégique complète. Pilote le cap, suit les indicateurs globaux, accède à tous les modules et gère les utilisateurs.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Accès total</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-full"></div>Dashboard & Coach IA<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Finances globales<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Commercial — tout le pipeline<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Planning & Interventions<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Mails & Notes<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Gestion des rôles & utilisateurs<span class="access-tag tag-full">Admin</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Responsable Commercial -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-resp-com">💼 Resp. Commercial</div>
+      <div class="persona-name">Ex. : Sophie Martin</div>
+      <div class="persona-desc">Pilote tout le pipeline de l'équipe, voit les devis de tous les commerciaux, accès au CA global en lecture.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Accès complet</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-full"></div>Tous les devis & brouillons<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Pipeline équipe + taux conversion<span class="access-tag tag-full">Complet</span></div>
+          <div class="module-item"><div class="module-dot dot-full"></div>Objectifs commerciaux équipe<span class="access-tag tag-full">Complet</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Lecture seule</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-read"></div>CA global & carnet de commandes<span class="access-tag tag-read">Lecture</span></div>
+          <div class="module-item"><div class="module-dot dot-read"></div>Planning interventions<span class="access-tag tag-read">Lecture</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Bloqué</div>
+        <div class="module-list">
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Détail finances (MO, fournitures)</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Mails & Notes dirigeant</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Commercial -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-commercial">🤝 Commercial</div>
+      <div class="persona-name">Ex. : Thomas Dupont</div>
+      <div class="persona-desc">Voit uniquement ses propres dossiers. Ne peut pas voir les devis ou clients des autres commerciaux.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Ses données uniquement</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-own"></div>Ses devis & brouillons<span class="access-tag tag-own">Ses données</span></div>
+          <div class="module-item"><div class="module-dot dot-own"></div>Son pipeline & objectifs<span class="access-tag tag-own">Ses données</span></div>
+          <div class="module-item"><div class="module-dot dot-own"></div>Ses clients<span class="access-tag tag-own">Ses données</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Lecture partielle</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-read"></div>CA pôle (chiffre global seulement)<span class="access-tag tag-read">Lecture</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Bloqué</div>
+        <div class="module-list">
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Devis des autres commerciaux</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Finances & Planning</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assistante Technique -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-assistante">🗂 Assistante Technique</div>
+      <div class="persona-name">Ex. : Marie Leclerc</div>
+      <div class="persona-desc">Gère le planning, suit les interventions, prépare les devis si nécessaire. Pas d'accès aux finances ni aux objectifs stratégiques.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Écriture</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-write"></div>Planning techniciens<span class="access-tag tag-write">Écriture</span></div>
+          <div class="module-item"><div class="module-dot dot-write"></div>Interventions (créer/modifier)<span class="access-tag tag-write">Écriture</span></div>
+          <div class="module-item"><div class="module-dot dot-write"></div>Préparer un devis<span class="access-tag tag-write">Écriture</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Lecture</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-read"></div>Clients & contacts<span class="access-tag tag-read">Lecture</span></div>
+          <div class="module-item"><div class="module-dot dot-read"></div>Devis en cours (statuts)<span class="access-tag tag-read">Lecture</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Bloqué</div>
+        <div class="module-list">
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Finances globales</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Objectifs stratégiques</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technicien -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-technicien">🔧 Technicien</div>
+      <div class="persona-name">Ex. : Marc Lefort</div>
+      <div class="persona-desc">Vue épurée mobile-first. Voit ses interventions du jour, son planning, ses objectifs terrain. Rien d'autre.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Ses données</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-own"></div>Ses interventions du jour<span class="access-tag tag-own">Ses données</span></div>
+          <div class="module-item"><div class="module-dot dot-own"></div>Son planning semaine<span class="access-tag tag-own">Ses données</span></div>
+          <div class="module-item"><div class="module-dot dot-own"></div>Ses objectifs (nb inter, qualité)<span class="access-tag tag-own">Ses données</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Lecture</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-read"></div>Planning équipe (vue globale)<span class="access-tag tag-read">Lecture</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Bloqué</div>
+        <div class="module-list">
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Finances & Commercial</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Mails & Notes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comptable -->
+  <div class="persona-card">
+    <div class="persona-header">
+      <div class="persona-badge badge-comptable">📊 Comptable</div>
+      <div class="persona-name">Ex. : Claire Renard</div>
+      <div class="persona-desc">Accès en lecture aux données financières pour export et rapprochement comptable. Aucun accès aux données commerciales ou RH.</div>
+    </div>
+    <div class="persona-body">
+      <div class="module-group">
+        <div class="module-group-label">Lecture finances</div>
+        <div class="module-list">
+          <div class="module-item"><div class="module-dot dot-fin"></div>CA, facturation, impayés<span class="access-tag tag-fin">Lecture</span></div>
+          <div class="module-item"><div class="module-dot dot-fin"></div>Devis signés (montants HT)<span class="access-tag tag-fin">Lecture</span></div>
+          <div class="module-item"><div class="module-dot dot-fin"></div>MO & Fournitures (coûts)<span class="access-tag tag-fin">Lecture</span></div>
+          <div class="module-item"><div class="module-dot dot-fin"></div>Export données (CSV/Excel)<span class="access-tag tag-fin">Export</span></div>
+        </div>
+      </div>
+      <div class="module-group">
+        <div class="module-group-label">Bloqué</div>
+        <div class="module-list">
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Pipeline commercial</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Planning & Interventions</div>
+          <div class="module-item locked"><div class="module-dot dot-none"></div>Mails, Notes, Objectifs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Legend ── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Complet / Admin</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--teal)"></div>Écriture</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Lecture seule</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Ses données uniquement</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Lecture finances</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div>Bloqué</div>
+</div>
+
+<!-- ── Matrix ── -->
+<h2 class="section-title">Matrice des permissions</h2>
+<p class="section-sub">Vue synthétique — ce que chaque rôle peut faire sur chaque module.</p>
+
+<div class="matrix-wrap">
+  <div class="matrix-card">
+    <div class="matrix-card-header">
+      <div>
+        <div class="matrix-card-title">Permissions par module</div>
+        <div class="matrix-card-sub">Modifiable dans Paramètres → Gestion des rôles</div>
+      </div>
+    </div>
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th class="module-col">Module</th>
+          <th>👑 Dirigeant</th>
+          <th>💼 Resp. Com.</th>
+          <th>🤝 Commercial</th>
+          <th>🗂 Assist. Tech.</th>
+          <th>🔧 Technicien</th>
+          <th>📊 Comptable</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="module-col">Dashboard & Coach IA</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-own">Ses données</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-own">Ses données</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Finances — CA global</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-fin">Lecture</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Finances — Détail (MO…)</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-fin">Lecture</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Commercial — tous devis</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Commercial — ses devis</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-own">Ses données</span></td>
+          <td><span class="cell cell-write">Écriture</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Planning & Interventions</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-write">Écriture</span></td>
+          <td><span class="cell cell-own">Ses données</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Clients & Contacts</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-own">Ses clients</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Mails Outlook</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Notes & Tâches</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-own">Les siennes</span></td>
+          <td><span class="cell cell-own">Les siennes</span></td>
+          <td><span class="cell cell-own">Les siennes</span></td>
+          <td><span class="cell cell-own">Les siennes</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Objectifs stratégiques</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-read">Lecture</span></td>
+          <td><span class="cell cell-own">Les siens</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-own">Les siens</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Gestion utilisateurs / rôles</td>
+          <td><span class="cell cell-full">Admin</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+        </tr>
+        <tr>
+          <td class="module-col">Export données</td>
+          <td><span class="cell cell-full">Complet</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-none">—</span></td>
+          <td><span class="cell cell-fin">Finances</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Role editor mockup ── -->
+<h2 class="section-title">Éditeur de rôle</h2>
+<p class="section-sub">Interface de création et modification des rôles — accessible depuis Paramètres → Gestion des rôles.</p>
+
+<div class="editor-wrap">
+  <div class="editor-shell">
+    <div class="editor-header">
+      <div>
+        <div class="editor-title">Gestion des rôles</div>
+        <div class="editor-subtitle">Personnalisez les permissions de chaque profil</div>
+      </div>
+      <button class="editor-btn">+ Nouveau rôle</button>
+    </div>
+    <div class="editor-body">
+      <div class="editor-sidebar">
+        <div class="editor-sidebar-label">Rôles actifs</div>
+        <div class="editor-role-item"><div class="editor-role-dot" style="color:var(--accent)"></div>Dirigeant</div>
+        <div class="editor-role-item active"><div class="editor-role-dot"></div>Resp. Commercial</div>
+        <div class="editor-role-item"><div class="editor-role-dot" style="color:#1e4faa"></div>Commercial</div>
+        <div class="editor-role-item"><div class="editor-role-dot" style="color:var(--teal)"></div>Assist. Technique</div>
+        <div class="editor-role-item"><div class="editor-role-dot" style="color:var(--green)"></div>Technicien</div>
+        <div class="editor-role-item"><div class="editor-role-dot" style="color:var(--purple)"></div>Comptable</div>
+        <div class="editor-new">+ Créer un rôle</div>
+      </div>
+      <div class="editor-main">
+        <div class="editor-field">
+          <div class="editor-label">Nom du rôle</div>
+          <input class="editor-input" type="text" value="Responsable Commercial" readonly />
+        </div>
+        <div class="editor-field">
+          <div class="editor-label">Permissions par module</div>
+          <div class="perm-grid">
+            <div class="perm-row">
+              <div class="perm-module">Finances</div>
+              <div class="perm-options">
+                <span class="perm-opt unselected">Complet</span>
+                <span class="perm-opt selected-read">Lecture</span>
+                <span class="perm-opt unselected">—</span>
+              </div>
+            </div>
+            <div class="perm-row">
+              <div class="perm-module">Commercial</div>
+              <div class="perm-options">
+                <span class="perm-opt selected-full">Complet</span>
+                <span class="perm-opt unselected">Lecture</span>
+                <span class="perm-opt unselected">Ses données</span>
+                <span class="perm-opt unselected">—</span>
+              </div>
+            </div>
+            <div class="perm-row">
+              <div class="perm-module">Planning</div>
+              <div class="perm-options">
+                <span class="perm-opt unselected">Écriture</span>
+                <span class="perm-opt selected-read">Lecture</span>
+                <span class="perm-opt unselected">—</span>
+              </div>
+            </div>
+            <div class="perm-row">
+              <div class="perm-module">Mails & Notes</div>
+              <div class="perm-options">
+                <span class="perm-opt unselected">Complet</span>
+                <span class="perm-opt unselected">Lecture</span>
+                <span class="perm-opt selected-none unselected">—</span>
+              </div>
+            </div>
+            <div class="perm-row">
+              <div class="perm-module">Objectifs</div>
+              <div class="perm-options">
+                <span class="perm-opt unselected">Complet</span>
+                <span class="perm-opt selected-read">Lecture</span>
+                <span class="perm-opt unselected">Les siens</span>
+                <span class="perm-opt unselected">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Roadmap V2 ── -->
+<h2 class="section-title">Ce qu'il faut construire</h2>
+<p class="section-sub">Les 4 blocs techniques pour rendre Aria collaboratif.</p>
+
+<div class="roadmap-wrap">
+  <div class="roadmap-grid">
+    <div class="roadmap-card">
+      <div class="roadmap-card-head"><div class="roadmap-num">1</div><div class="roadmap-card-title">Auth multi-utilisateurs</div></div>
+      <div class="roadmap-items">
+        <div class="roadmap-item">Invitation par email (Supabase Auth)</div>
+        <div class="roadmap-item">Attribution d'un rôle à la création du compte</div>
+        <div class="roadmap-item">Profil lié à un espace entreprise</div>
+      </div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-card-head"><div class="roadmap-num">2</div><div class="roadmap-card-title">Rôles personnalisables</div></div>
+      <div class="roadmap-items">
+        <div class="roadmap-item">Table `roles` + table `role_permissions` dans Supabase</div>
+        <div class="roadmap-item">Interface éditeur de permissions (matrice cochable)</div>
+        <div class="roadmap-item">Assignation d'un rôle à chaque utilisateur invité</div>
+      </div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-card-head"><div class="roadmap-num">3</div><div class="roadmap-card-title">Row Level Security (RLS)</div></div>
+      <div class="roadmap-items">
+        <div class="roadmap-item">Policies Supabase pilotées par le rôle de l'utilisateur</div>
+        <div class="roadmap-item">Un commercial ne voit que ses lignes — au niveau DB</div>
+        <div class="roadmap-item">Dirigeant : aucun filtre</div>
+      </div>
+    </div>
+    <div class="roadmap-card">
+      <div class="roadmap-card-head"><div class="roadmap-num">4</div><div class="roadmap-card-title">Dashboards conditionnels</div></div>
+      <div class="roadmap-items">
+        <div class="roadmap-item">Navigation filtrée selon le rôle connecté</div>
+        <div class="roadmap-item">Composants affichés / masqués selon les permissions</div>
+        <div class="roadmap-item">Dashboard mobile-first pour Technicien & Assist. Tech.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Market ── -->
+<h2 class="section-title" style="margin-top:64px;">Potentiel de marché</h2>
+<p class="section-sub">PME de services techniques en France — un marché très peu adressé par des outils intelligents.</p>
+
+<div class="market-wrap">
+  <div class="market-grid">
+    <div class="mkt-card">
+      <div class="mkt-num">150k</div>
+      <div class="mkt-label">PME services techniques en France<br/>(CVC, élec, plomberie, maintenance)</div>
+    </div>
+    <div class="mkt-card">
+      <div class="mkt-num">&lt; 5%</div>
+      <div class="mkt-label">ont un vrai outil de pilotage BI<br/>adapté à leur métier</div>
+    </div>
+    <div class="mkt-card">
+      <div class="mkt-num">150–300€</div>
+      <div class="mkt-label">prix SaaS mensuel réaliste<br/>par entreprise (3–10 utilisateurs)</div>
+    </div>
+  </div>
+</div>
+
+<p style="text-align:center; margin-top: 48px; font-size: 12px; color: var(--text-muted);">
+  Prototype — Aria Coach — Architecture V2 &nbsp;·&nbsp; 18 juin 2026
+</p>
+
+</body>
+</html>

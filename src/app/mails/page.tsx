@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
+import { PageGuard } from "@/components/ui/PageGuard";
 import type { Mail, MailFolder } from "@/types";
 
 interface Analysis {
@@ -68,7 +69,7 @@ function folderLabel(name: string) {
   return FOLDER_LABELS[name.toLowerCase()] || name;
 }
 
-export default function MailsPage() {
+function MailsPageInner() {
   const router = useRouter();
   const [folders, setFolders] = useState<MailFolder[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -614,5 +615,14 @@ export default function MailsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+
+export default function MailsPage() {
+  return (
+    <PageGuard module="mails">
+      <MailsPageInner />
+    </PageGuard>
   );
 }

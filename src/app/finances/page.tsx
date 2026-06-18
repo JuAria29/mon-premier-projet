@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
+import { PageGuard } from "@/components/ui/PageGuard";
 import {
   FISCAL_MONTH_KEYS,
   FISCAL_MONTH_LABELS,
@@ -411,7 +412,7 @@ const EMPTY_HISTORY_FORM = {
   charges_totales: "", resultat_net: "", tresorerie_fin: "", effectif: "",
 };
 
-export default function FinancesPage() {
+function FinancesPageInner() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("synthese");
   const [poleFilter, setPoleFilter] = useState<PoleFilter>("tous");
@@ -1579,5 +1580,14 @@ export default function FinancesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+
+export default function FinancesPage() {
+  return (
+    <PageGuard module="finances">
+      <FinancesPageInner />
+    </PageGuard>
   );
 }
