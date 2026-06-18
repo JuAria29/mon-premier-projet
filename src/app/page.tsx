@@ -15,7 +15,7 @@ import { CoachExchange } from "@/components/dashboard/CoachExchange";
 import { mockData } from "@/lib/mockData";
 import type { Session, Workspace, Layout, Density, Task, AppSettings, Objective, ObjectiveLevel } from "@/types";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin" | "admin-roles";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "finances-synthese" | "finances-commercial" | "finances-alertes" | "finances-ca" | "finances-poles" | "admin" | "admin-roles";
 
 const LEVEL_LABELS: Record<ObjectiveLevel, string> = {
   jour: "Aujourd'hui",
@@ -120,6 +120,11 @@ export default function DashboardPage() {
     else if (nav === "notes") router.push("/notes");
     else if (nav === "agenda") router.push("/agenda");
     else if (nav === "finances") router.push("/finances");
+    else if (nav === "finances-synthese") router.push("/finances?tab=synthese");
+    else if (nav === "finances-commercial") router.push("/finances?tab=commercial");
+    else if (nav === "finances-alertes") router.push("/finances?tab=commercial&section=alertes");
+    else if (nav === "finances-ca") router.push("/finances?tab=commercial&section=ca");
+    else if (nav === "finances-poles") router.push("/finances?tab=commercial&section=poles");
     else if (nav === "admin") router.push("/admin/utilisateurs");
     else if (nav === "admin-roles") router.push("/admin/roles");
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
 import { PageGuard } from "@/components/ui/PageGuard";
 import {
@@ -414,7 +414,11 @@ const EMPTY_HISTORY_FORM = {
 
 function FinancesPageInner() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("synthese");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get("tab");
+    return (t === "commercial" || t === "synthese") ? t : "synthese";
+  });
   const [poleFilter, setPoleFilter] = useState<PoleFilter>("tous");
   const [brouillonsOpen, setBrouillonsOpen] = useState(false);
   const [devisAFaireOpen, setDevisAFaireOpen] = useState(false);
@@ -423,6 +427,19 @@ function FinancesPageInner() {
 
   // Dynamic fiscal year — auto-updates on Oct 1 each year
   const [fy] = useState<FiscalYear>(() => getCurrentFiscalYear());
+
+  // Scroll vers la section demandée via le param URL ?section=xxx
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (!section) return;
+    const id = `section-${section}`;
+    const attempt = (tries: number) => {
+      const el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+      if (tries > 0) setTimeout(() => attempt(tries - 1), 300);
+    };
+    setTimeout(() => attempt(5), 400);
+  }, [searchParams, tab]);
 
   const [interfastStats, setInterfastStats] = useState<InterfastStats | null>(null);
   const [plCurrentInvoices, setPlCurrentInvoices] = useState<PLInvoice[]>([]);
@@ -980,6 +997,7 @@ function FinancesPageInner() {
                     {/* ── SECTION 1 : Alertes & Actions ────────────────────────────── */}
                     {(brouillonsCount > 0 || devisAFaireCount > 0) && (
                       <>
+                        <div id="section-alertes" />
                         <SectionLabel label="Alertes & Actions" />
 
                         {/* Brouillons — collapsible */}
@@ -1079,6 +1097,7 @@ function FinancesPageInner() {
                     )}
 
                     {/* ── SECTION 2 : Statistiques commerciales ────────────────────── */}
+                    <div id="section-stats" />
                     <SectionLabel label="Statistiques commerciales" />
 
                     {devisEnvoyesCount > 0 && (
@@ -1156,6 +1175,7 @@ function FinancesPageInner() {
                     )}
 
                     {/* ── SECTION 3 : CA Vendu & Plan de charge ────────────────────── */}
+                    <div id="section-ca" />
                     <SectionLabel label="CA Vendu & Plan de charge" />
 
                     {hasPoleData && (
@@ -1225,6 +1245,7 @@ function FinancesPageInner() {
                     {/* ── SECTION 4 : Analyse par pôle ─────────────────────────────── */}
                     {hasPoleData && (
                       <>
+                        <div id="section-poles" />
                         <SectionLabel label="Analyse par pôle" />
                         <div className="card" style={{ padding: "16px 18px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>

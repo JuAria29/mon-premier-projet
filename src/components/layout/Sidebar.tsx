@@ -5,7 +5,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import type { Workspace } from "@/types";
 import type { ModuleId } from "@/lib/permissions";
 
-type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "admin" | "admin-roles";
+type NavItem = "dashboard" | "objectifs" | "mails" | "notes" | "taches" | "agenda" | "finances" | "finances-synthese" | "finances-commercial" | "finances-alertes" | "finances-ca" | "finances-poles" | "admin" | "admin-roles";
 
 interface SidebarProps {
   workspace: Workspace;
@@ -80,14 +80,76 @@ export function Sidebar({ workspace, onWorkspaceChange, activeNav, onNavChange, 
       {/* Navigation filtrée selon les permissions */}
       <nav className="sidebar-nav">
         {visibleNavItems.map((item) => (
-          <button
-            key={item.id}
-            className={`nav-item${activeNav === item.id ? " active" : ""}`}
-            onClick={() => onNavChange(item.id)}
-          >
-            <Icon name={item.icon} size={16} />
-            <span>{item.label}</span>
-          </button>
+          <div key={item.id}>
+            <button
+              className={`nav-item${activeNav === item.id || (item.id === "finances" && activeNav.startsWith("finances")) ? " active" : ""}`}
+              onClick={() => onNavChange(item.id)}
+            >
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+            </button>
+
+            {/* Sous-navigation Finance */}
+            {item.id === "finances" && activeNav.startsWith("finances") && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 2, marginBottom: 4 }}>
+                <button
+                  onClick={() => onNavChange("finances-synthese")}
+                  style={{
+                    padding: "6px 12px 6px 30px", borderRadius: 8, border: "none", cursor: "pointer",
+                    textAlign: "left", fontSize: 12, fontWeight: activeNav === "finances-synthese" ? 700 : 500,
+                    background: activeNav === "finances-synthese" ? "#fff3ec" : "transparent",
+                    color: activeNav === "finances-synthese" ? "var(--accent-strong)" : "var(--text-muted)",
+                  }}
+                >
+                  Synthèse
+                </button>
+                <button
+                  onClick={() => onNavChange("finances-commercial")}
+                  style={{
+                    padding: "6px 12px 6px 30px", borderRadius: 8, border: "none", cursor: "pointer",
+                    textAlign: "left", fontSize: 12, fontWeight: activeNav === "finances-commercial" ? 700 : 500,
+                    background: activeNav === "finances-commercial" ? "#fff3ec" : "transparent",
+                    color: activeNav === "finances-commercial" ? "var(--accent-strong)" : "var(--text-muted)",
+                  }}
+                >
+                  Commercial
+                </button>
+                <button
+                  onClick={() => onNavChange("finances-alertes")}
+                  style={{
+                    padding: "5px 12px 5px 42px", borderRadius: 8, border: "none", cursor: "pointer",
+                    textAlign: "left", fontSize: 11, fontWeight: activeNav === "finances-alertes" ? 700 : 500,
+                    background: activeNav === "finances-alertes" ? "#fff3ec" : "transparent",
+                    color: activeNav === "finances-alertes" ? "#dc2626" : "var(--text-muted)",
+                  }}
+                >
+                  ⚠ Alertes
+                </button>
+                <button
+                  onClick={() => onNavChange("finances-ca")}
+                  style={{
+                    padding: "5px 12px 5px 42px", borderRadius: 8, border: "none", cursor: "pointer",
+                    textAlign: "left", fontSize: 11, fontWeight: activeNav === "finances-ca" ? 700 : 500,
+                    background: activeNav === "finances-ca" ? "#fff3ec" : "transparent",
+                    color: activeNav === "finances-ca" ? "var(--accent-strong)" : "var(--text-muted)",
+                  }}
+                >
+                  CA Vendu
+                </button>
+                <button
+                  onClick={() => onNavChange("finances-poles")}
+                  style={{
+                    padding: "5px 12px 5px 42px", borderRadius: 8, border: "none", cursor: "pointer",
+                    textAlign: "left", fontSize: 11, fontWeight: activeNav === "finances-poles" ? 700 : 500,
+                    background: activeNav === "finances-poles" ? "#fff3ec" : "transparent",
+                    color: activeNav === "finances-poles" ? "var(--accent-strong)" : "var(--text-muted)",
+                  }}
+                >
+                  Analyse pôles
+                </button>
+              </div>
+            )}
+          </div>
         ))}
         {/* Section admin — dirigeant seulement */}
         {isDirigeant && (
