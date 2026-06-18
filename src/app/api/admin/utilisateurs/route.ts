@@ -80,6 +80,30 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// PATCH — modifier le rôle ou le nom d'un utilisateur
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = createSupabaseServiceClient();
+    const body: { user_id: string; role_id?: string; full_name?: string } = await req.json();
+
+    if (!body.user_id) return NextResponse.json({ error: "user_id requis" }, { status: 400 });
+
+    const updates: Record<string, string> = {};
+    if (body.role_id) updates.role_id = body.role_id;
+    if (body.full_name !== undefined) updates.full_name = body.full_name;
+
+    const { error } = await supabase
+      .from("user_profiles")
+      .update(updates)
+      .eq("id", body.user_id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
 // DELETE — supprimer un utilisateur
 export async function DELETE(req: NextRequest) {
   try {

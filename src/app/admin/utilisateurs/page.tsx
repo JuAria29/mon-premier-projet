@@ -36,27 +36,70 @@ export default function AdminUtilisateursPage() {
   const { isDirigeant, loading: permLoading } = usePermissions();
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Modal invitation
   const [showInvite, setShowInvite] = useState(false);
   const [form, setForm] = useState({ email: "", full_name: "", role_id: "" });
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSent, setInviteSent] = useState(false);
+
+  // Modal édition
+  const [editUser, setEditUser] = useState<UserEntry | null>(null);
+  const [editForm, setEditForm] = useState({ full_name: "", role_id: "" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Suppression
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!permLoading && !isDirigeant) router.replace("/");
   }, [permLoading, isDirigeant, router]);
 
+  function loadUsers() {
+    return fetch("/api/admin/utilisateurs").then((r) => r.ok ? r.json() : []);
+  }
+
   useEffect(() => {
     Promise.all([
-      fetch("/api/admin/utilisateurs").then((r) => r.ok ? r.json() : []),
+      loadUsers(),
       fetch("/api/admin/roles").then((r) => r.ok ? r.json() : []),
     ]).then(([u, r]) => {
       setUsers(u);
+      setAllRoles(r);
       setRoles(r.filter((role: Role) => role.slug !== "dirigeant"));
     }).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function openEdit(user: UserEntry) {
+    setEditUser(user);
+    setEditForm({ full_name: user.full_name ?? "", role_id: user.role?.id ?? "" });
+    setSaveError(null);
+  }
+
+  async function handleSave() {
+    if (!editUser) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/admin/utilisateurs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: editUser.id, ...editForm }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setSaveError(data.error); return; }
+      const updated = await loadUsers();
+      setUsers(updated);
+      setEditUser(null);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -73,10 +116,10 @@ export default function AdminUtilisateursPage() {
       if (!res.ok) { setInviteError(data.error); return; }
       setInviteSent(true);
       setForm({ email: "", full_name: "", role_id: "" });
-      setTimeout(() => {
+      setTimeout(async () => {
         setInviteSent(false);
         setShowInvite(false);
-        fetch("/api/admin/utilisateurs").then((r) => r.json()).then(setUsers);
+        setUsers(await loadUsers());
       }, 2500);
     } finally {
       setInviting(false);
@@ -115,7 +158,7 @@ export default function AdminUtilisateursPage() {
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: 22, fontWeight: 800 }}>Utilisateurs</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-              {users.length} membre{users.length > 1 ? "s" : ""} · Invitez des collaborateurs et assignez-leur un rôle
+              {users.length} membre{users.length > 1 ? "s" : ""} · Seul le Dirigeant peut gérer les accès
             </p>
           </div>
           <button
@@ -126,87 +169,144 @@ export default function AdminUtilisateursPage() {
           </button>
         </div>
 
-        {/* Liste utilisateurs */}
+        {/* Liste */}
         <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow)" }}>
           {users.length === 0 ? (
             <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
               Aucun collaborateur invité pour l'instant.
             </div>
-          ) : (
-            users.map((user, i) => (
-              <div
-                key={user.id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 16, padding: "16px 24px",
-                  borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none",
-                }}
-              >
-                {/* Avatar */}
-                <div style={{
-                  width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-                  background: user.role?.color ?? "var(--border)",
-                  color: "#fff", fontWeight: 700, fontSize: 14,
-                  display: "flex", alignItems: "center", justifyContent: "center",
+          ) : users.map((user, i) => (
+            <div
+              key={user.id}
+              style={{
+                display: "flex", alignItems: "center", gap: 16, padding: "16px 24px",
+                borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none",
+              }}
+            >
+              {/* Avatar */}
+              <div style={{
+                width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                background: user.role?.color ?? "#ccc",
+                color: "#fff", fontWeight: 700, fontSize: 14,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {(user.full_name ?? user.email ?? "?").charAt(0).toUpperCase()}
+              </div>
+
+              {/* Infos */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{user.full_name ?? user.email}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>{user.email}</div>
+              </div>
+
+              {/* Rôle */}
+              {user.role ? (
+                <span style={{
+                  padding: "3px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                  background: `${user.role.color}18`, color: user.role.color,
                 }}>
-                  {(user.full_name ?? user.email ?? "?").charAt(0).toUpperCase()}
-                </div>
+                  {user.role.name}
+                </span>
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sans rôle</span>
+              )}
 
-                {/* Infos */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>
-                    {user.full_name ?? user.email}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
-                    {user.email}
-                  </div>
+              {/* Statut */}
+              <div style={{ textAlign: "right", minWidth: 100 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: user.confirmed ? "#16a34a" : "var(--text-muted)" }}>
+                  {user.confirmed ? "✓ Actif" : "⏳ En attente"}
                 </div>
-
-                {/* Rôle */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {user.role ? (
-                    <span style={{
-                      padding: "3px 11px", borderRadius: 999, fontSize: 11, fontWeight: 600,
-                      background: `${user.role.color}18`, color: user.role.color,
-                    }}>
-                      {user.role.name}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Sans rôle</span>
-                  )}
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                  Connecté {timeAgo(user.last_sign_in)}
                 </div>
+              </div>
 
-                {/* Statut */}
-                <div style={{ textAlign: "right", minWidth: 90 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: user.confirmed ? "var(--green, #16a34a)" : "var(--text-muted)" }}>
-                    {user.confirmed ? "✓ Actif" : "⏳ En attente"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                    Connecté {timeAgo(user.last_sign_in)}
-                  </div>
-                </div>
-
-                {/* Supprimer */}
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button
+                  onClick={() => openEdit(user)}
+                  style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid var(--border)", background: "transparent", fontSize: 11, fontWeight: 600, color: "var(--text-soft)", cursor: "pointer" }}
+                >
+                  Modifier
+                </button>
                 {user.role?.slug !== "dirigeant" && (
                   <button
                     onClick={() => handleDelete(user.id, user.full_name ?? user.email ?? user.id)}
                     disabled={deletingId === user.id}
-                    style={{
-                      padding: "5px 10px", borderRadius: 7, border: "1.5px solid var(--border)",
-                      background: "transparent", fontSize: 11, color: "var(--text-muted)",
-                      cursor: "pointer", flexShrink: 0,
-                    }}
+                    style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #fecaca", background: "#fef2f2", fontSize: 11, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}
                   >
                     {deletingId === user.id ? "…" : "Retirer"}
                   </button>
                 )}
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
-
       </div>
 
-      {/* Modal invitation */}
+      {/* ── Modal édition ── */}
+      {editUser && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditUser(null); }}
+        >
+          <div style={{ background: "var(--surface)", borderRadius: 20, padding: "32px 28px", width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(40,30,20,0.18)" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Modifier l'utilisateur</h2>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 24 }}>{editUser.email}</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                  Prénom Nom
+                </label>
+                <input
+                  type="text"
+                  value={editForm.full_name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--surface2)", outline: "none" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                  Rôle
+                </label>
+                <select
+                  value={editForm.role_id}
+                  onChange={(e) => setEditForm((f) => ({ ...f, role_id: e.target.value }))}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--surface2)", outline: "none", cursor: "pointer" }}
+                >
+                  <option value="">Aucun rôle</option>
+                  {allRoles.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {saveError && (
+                <p style={{ fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 12px", borderRadius: 8 }}>{saveError}</p>
+              )}
+
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button
+                  onClick={() => setEditUser(null)}
+                  style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid var(--border)", background: "transparent", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-soft)" }}
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  style={{ flex: 2, padding: "10px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13, border: "none", cursor: "pointer", opacity: saving ? 0.7 : 1 }}
+                >
+                  {saving ? "Enregistrement…" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal invitation ── */}
       {showInvite && (
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}
@@ -227,37 +327,27 @@ export default function AdminUtilisateursPage() {
             ) : (
               <form onSubmit={handleInvite} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                    Email *
-                  </label>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Email *</label>
                   <input
-                    type="email"
-                    required
-                    value={form.email}
+                    type="email" required value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="prenom.nom@entreprise.fr"
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--surface2)", outline: "none" }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                    Prénom Nom
-                  </label>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Prénom Nom</label>
                   <input
-                    type="text"
-                    value={form.full_name}
+                    type="text" value={form.full_name}
                     onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                     placeholder="Thomas Dupont"
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--surface2)", outline: "none" }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-                    Rôle *
-                  </label>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Rôle *</label>
                   <select
-                    required
-                    value={form.role_id}
+                    required value={form.role_id}
                     onChange={(e) => setForm((f) => ({ ...f, role_id: e.target.value }))}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--surface2)", outline: "none", cursor: "pointer" }}
                   >
@@ -267,24 +357,18 @@ export default function AdminUtilisateursPage() {
                     ))}
                   </select>
                 </div>
-
                 {inviteError && (
-                  <p style={{ fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 12px", borderRadius: 8 }}>
-                    {inviteError}
-                  </p>
+                  <p style={{ fontSize: 12, color: "#dc2626", background: "#fef2f2", padding: "8px 12px", borderRadius: 8 }}>{inviteError}</p>
                 )}
-
                 <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                   <button
-                    type="button"
-                    onClick={() => setShowInvite(false)}
+                    type="button" onClick={() => setShowInvite(false)}
                     style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid var(--border)", background: "transparent", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-soft)" }}
                   >
                     Annuler
                   </button>
                   <button
-                    type="submit"
-                    disabled={inviting}
+                    type="submit" disabled={inviting}
                     style={{ flex: 2, padding: "10px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13, border: "none", cursor: "pointer", opacity: inviting ? 0.7 : 1 }}
                   >
                     {inviting ? "Envoi…" : "Envoyer l'invitation"}
