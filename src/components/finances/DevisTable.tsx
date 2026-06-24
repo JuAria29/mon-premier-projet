@@ -2,29 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-interface DevisItem {
-  id: string;
-  reference: string | null;
-  titre: string | null;
-  client: string | null;
-  statut: string;
-  montant_ht: number;
-  montant_ttc: number;
-  created_at_interfast: string | null;
-}
-
-interface StatusSummary {
-  count: number;
-  total: number;
-}
-
+interface StatusSummary { count: number; total: number; }
 interface DevisResponse {
-  devis: DevisItem[];
+  devis: unknown[];
   count: number;
-  page: number;
-  limit: number;
   summary: Record<string, StatusSummary>;
   total: number;
+}
+interface StatsResponse {
+  topClients: { client: string; count: number; total_ht: number }[];
+  byMonth: { month: string; count: number; total_ht: number }[];
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -37,31 +24,41 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   paid:      { label: "Facturé",    color: "#16a34a", bg: "#e6f4ed",  border: "#86efac" },
 };
 
-const PILL_ORDER = ["all", "draft", "sent", "finalized", "signed", "refused", "paid", "canceled"];
+const PILL_ORDER = ["draft", "finalized", "sent", "signed", "refused", "paid", "canceled"];
 
 const fmt = (n: number, d = 0) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(n);
 
-const fmtDate = (s: string | null) => {
-  if (!s) return "—";
-  try {
-    return new Date(s).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-  } catch { return s; }
-};
+function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
+  return (
+    <div style={{
+      background: accent ? "var(--accent-soft)" : "var(--surface)",
+      border: `1.5px solid ${accent ? "var(--accent)" : "var(--border)"}`,
+      borderRadius: 14, padding: "16px 20px", flex: 1, minWidth: 140,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: accent ? "var(--accent)" : "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: accent ? "var(--accent)" : "var(--text)", lineHeight: 1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
 
 export function DevisTable() {
   const [data, setData] = useState<DevisResponse | null>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeStatuts, setActiveStatuts] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const LIMIT = 50;
 
-  const fetchDevis = useCallback(async (statuts: string[], q: string, p: number) => {
+  const fetchData = useCallback(async (statuts: string[], q: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      const params = new URLSearchParams({ limit: "1" }); // on veut juste le résumé
       if (statuts.length > 0) params.set("statuts", statuts.join(","));
       if (q.trim()) params.set("q", q.trim());
       const r = await fetch(`/api/finances/devis?${params}`);
@@ -71,36 +68,52 @@ export function DevisTable() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchDevis(activeStatuts, search, page);
-  }, [fetchDevis, activeStatuts, page]);
+  const fetchStats = useCallback(async () => {
+    const r = await fetch("/api/finances/devis/stats");
+    if (r.ok) setStats(await r.json());
+  }, []);
+
+  useEffect(() => { fetchData([], ""); fetchStats(); }, [fetchData, fetchStats]);
 
   function handleSearch(v: string) {
     setSearch(v);
-    setPage(0);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchDevis(activeStatuts, v, 0), 400);
+    searchTimer.current = setTimeout(() => fetchData(activeStatuts, v), 400);
   }
 
   function toggleStatut(slug: string) {
     if (slug === "all") {
       setActiveStatuts([]);
+      fetchData([], search);
     } else {
-      setActiveStatuts((prev) =>
-        prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
-      );
+      const next = activeStatuts.includes(slug)
+        ? activeStatuts.filter((s) => s !== slug)
+        : [...activeStatuts, slug];
+      setActiveStatuts(next);
+      fetchData(next, search);
     }
-    setPage(0);
   }
 
   const summary = data?.summary ?? {};
   const totalAll = data?.total ?? 0;
   const totalHT = Object.values(summary).reduce((s, v) => s + v.total, 0);
   const totalCount = Object.values(summary).reduce((s, v) => s + v.count, 0);
-  const totalPages = data ? Math.ceil(data.count / LIMIT) : 0;
 
   const isActive = (slug: string) =>
     slug === "all" ? activeStatuts.length === 0 : activeStatuts.includes(slug);
+
+  // KPIs calculés
+  const caGagne = (summary.signed?.total ?? 0) + (summary.paid?.total ?? 0);
+  const countGagne = (summary.signed?.count ?? 0) + (summary.paid?.count ?? 0);
+  const caPipeline = (summary.sent?.total ?? 0) + (summary.finalized?.total ?? 0);
+  const countPipeline = (summary.sent?.count ?? 0) + (summary.finalized?.count ?? 0);
+  const base = countGagne + countPipeline + (summary.refused?.count ?? 0);
+  const tauxSig = base > 0 ? Math.round((countGagne / base) * 100) : 0;
+  const panierMoyen = totalCount > 0 ? totalHT / totalCount : 0;
+
+  // Filtrage top clients selon statuts actifs
+  const filteredClients = stats?.topClients ?? [];
+  const maxClientHT = filteredClients[0]?.total_ht ?? 1;
 
   if (totalAll === 0 && !loading) {
     return (
@@ -115,11 +128,10 @@ export function DevisTable() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-      {/* ── Résumé statuts (comme Interfast) ── */}
+      {/* ── Pills par statut ── */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {/* Pill "Tous" */}
         <button
           onClick={() => toggleStatut("all")}
           style={{
@@ -136,23 +148,18 @@ export function DevisTable() {
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{fmt(totalHT)}</div>
         </button>
 
-        {/* Pills par statut */}
-        {PILL_ORDER.filter((s) => s !== "all").map((slug) => {
+        {PILL_ORDER.map((slug) => {
           const cfg = STATUS_CONFIG[slug];
           const stat = summary[slug];
           if (!stat) return null;
           const active = isActive(slug);
           return (
-            <button
-              key={slug}
-              onClick={() => toggleStatut(slug)}
-              style={{
-                display: "flex", flexDirection: "column", padding: "10px 14px", borderRadius: 11,
-                border: `1.5px solid ${active ? cfg.color : "var(--border)"}`,
-                background: active ? cfg.bg : "var(--surface)",
-                cursor: "pointer", minWidth: 90, textAlign: "left", gap: 2, transition: "all 0.15s",
-              }}
-            >
+            <button key={slug} onClick={() => toggleStatut(slug)} style={{
+              display: "flex", flexDirection: "column", padding: "10px 14px", borderRadius: 11,
+              border: `1.5px solid ${active ? cfg.color : "var(--border)"}`,
+              background: active ? cfg.bg : "var(--surface)",
+              cursor: "pointer", minWidth: 90, textAlign: "left", gap: 2, transition: "all 0.15s",
+            }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
                 <span style={{ fontSize: 20, fontWeight: 800, color: active ? cfg.color : "var(--text)", lineHeight: 1 }}>{stat.count}</span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: cfg.color, textTransform: "uppercase" }}>{cfg.label}</span>
@@ -163,7 +170,7 @@ export function DevisTable() {
         })}
       </div>
 
-      {/* ── Barre de filtres ── */}
+      {/* ── Barre de recherche ── */}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <div style={{ flex: 1, position: "relative" }}>
           <input
@@ -181,111 +188,85 @@ export function DevisTable() {
           <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
         </div>
         {(search || activeStatuts.length > 0) && (
-          <button
-            onClick={() => { setSearch(""); setActiveStatuts([]); setPage(0); fetchDevis([], "", 0); }}
-            style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: "pointer", color: "var(--text-muted)" }}
-          >
+          <button onClick={() => { setSearch(""); setActiveStatuts([]); fetchData([], ""); }}
+            style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: "pointer", color: "var(--text-muted)" }}>
             Réinitialiser
           </button>
         )}
         <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-          {loading ? "…" : `${data?.count ?? 0} devis`}
+          {loading ? "…" : `${totalCount} devis · ${fmt(totalHT)}`}
         </span>
       </div>
 
-      {/* ── Tableau ── */}
-      <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        {/* Header */}
-        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 200px 110px 110px 100px", gap: 0, borderBottom: "1.5px solid var(--border)", padding: "9px 16px", background: "var(--surface2)" }}>
-          {["Référence", "Titre", "Client", "Montant HT", "Montant TTC", "Statut"].map((h, i) => (
-            <div key={h} style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", ...(i > 2 ? { textAlign: "right" } : {}) }}>{h}</div>
-          ))}
-        </div>
-
-        {/* Rows */}
-        {loading ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Chargement…</div>
-        ) : (data?.devis ?? []).length === 0 ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Aucun résultat</div>
-        ) : (
-          (data?.devis ?? []).map((d, i) => {
-            const cfg = STATUS_CONFIG[d.statut] ?? { label: d.statut, color: "var(--text-muted)", bg: "var(--surface2)", border: "var(--border)" };
-            return (
-              <div
-                key={d.id}
-                style={{
-                  display: "grid", gridTemplateColumns: "110px 1fr 200px 110px 110px 100px", gap: 0,
-                  padding: "11px 16px", alignItems: "center",
-                  borderBottom: i < (data?.devis.length ?? 0) - 1 ? "1px solid var(--border)" : "none",
-                  background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)",
-                }}
-              >
-                {/* Référence */}
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                  {d.reference ?? "—"}
-                </div>
-
-                {/* Titre + Date */}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {d.titre || "—"}
-                  </div>
-                  {d.created_at_interfast && (
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{fmtDate(d.created_at_interfast)}</div>
-                  )}
-                </div>
-
-                {/* Client */}
-                <div style={{ fontSize: 12, color: "var(--text-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {d.client || "—"}
-                </div>
-
-                {/* Montant HT */}
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textAlign: "right" }}>
-                  {fmt(d.montant_ht)}
-                </div>
-
-                {/* Montant TTC */}
-                <div style={{ fontSize: 12, color: "var(--text-soft)", textAlign: "right" }}>
-                  {fmt(d.montant_ttc)}
-                </div>
-
-                {/* Statut */}
-                <div style={{ textAlign: "right" }}>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
-                    background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
-                    whiteSpace: "nowrap",
-                  }}>
-                    {cfg.label}
-                  </span>
-                </div>
-              </div>
-            );
-          })
-        )}
+      {/* ── KPIs ── */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <KpiCard label="CA Signé + Facturé" value={fmt(caGagne)} sub={`${countGagne} devis`} accent />
+        <KpiCard label="Pipeline actif" value={fmt(caPipeline)} sub={`${countPipeline} en cours`} />
+        <KpiCard label="Taux de signature" value={`${tauxSig} %`} sub={`sur ${base} devis traités`} />
+        <KpiCard label="Panier moyen" value={fmt(panierMoyen)} sub="par devis" />
       </div>
 
-      {/* ── Pagination ── */}
-      {totalPages > 1 && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button
-            disabled={page === 0}
-            onClick={() => setPage((p) => p - 1)}
-            style={{ padding: "6px 14px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: page === 0 ? "not-allowed" : "pointer", opacity: page === 0 ? 0.4 : 1, color: "var(--text)" }}
-          >
-            ← Précédent
-          </button>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            Page {page + 1} / {totalPages} · {data?.count ?? 0} résultats
-          </span>
-          <button
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-            style={{ padding: "6px 14px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: page >= totalPages - 1 ? "not-allowed" : "pointer", opacity: page >= totalPages - 1 ? 0.4 : 1, color: "var(--text)" }}
-          >
-            Suivant →
-          </button>
+      {/* ── Top clients ── */}
+      {filteredClients.length > 0 && (
+        <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Top clients — Montant HT
+            </span>
+          </div>
+          <div style={{ padding: "8px 0" }}>
+            {filteredClients.map((c, i) => {
+              const pct = Math.round((c.total_ht / maxClientHT) * 100);
+              return (
+                <div key={c.client} style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: i < filteredClients.length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 20, textAlign: "right", flexShrink: 0 }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {c.client}
+                    </div>
+                    <div style={{ marginTop: 4, height: 4, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: "var(--accent)", borderRadius: 999, transition: "width 0.4s" }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{fmt(c.total_ht)}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count} devis</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Tendance mensuelle ── */}
+      {stats && stats.byMonth.length > 1 && (
+        <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Volume mensuel — {stats.byMonth.length} mois
+            </span>
+          </div>
+          <div style={{ padding: "12px 16px", display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto" }}>
+            {(() => {
+              const maxHT = Math.max(...stats.byMonth.map((m) => m.total_ht), 1);
+              return stats.byMonth.map((m) => {
+                const [year, month] = m.month.split("-");
+                const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+                const h = Math.max(Math.round((m.total_ht / maxHT) * 80), 4);
+                return (
+                  <div key={m.month} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1, minWidth: 40 }}>
+                    <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 600 }}>{fmt(m.total_ht / 1000, 0)}k</div>
+                    <div style={{ width: "100%", height: h, background: "var(--accent)", borderRadius: "4px 4px 0 0", opacity: 0.85, minHeight: 4 }} />
+                    <div style={{ fontSize: 9, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
+                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{m.count}</div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
         </div>
       )}
 
