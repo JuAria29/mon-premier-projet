@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
 import { PageGuard } from "@/components/ui/PageGuard";
+import { DevisTable } from "@/components/finances/DevisTable";
+import { ChantierBoard } from "@/components/finances/ChantierBoard";
 import {
   FISCAL_MONTH_KEYS,
   FISCAL_MONTH_LABELS,
@@ -73,7 +75,7 @@ interface ManualHistoryEntry {
   tresorerie_fin: number | null; effectif: number | null;
 }
 
-type Tab = "synthese" | "commercial" | "finance";
+type Tab = "synthese" | "commercial" | "chantiers" | "finance";
 type PoleFilter = "tous" | "maintenance" | "travaux";
 
 // ─── Catégorisation des charges fournisseurs ──────────────────────────────────
@@ -417,7 +419,7 @@ function FinancesPageInner() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => {
     const t = searchParams.get("tab");
-    return (t === "commercial" || t === "synthese") ? t : "synthese";
+    return (t === "commercial" || t === "synthese" || t === "chantiers") ? t : "synthese";
   });
   const [poleFilter, setPoleFilter] = useState<PoleFilter>("tous");
   const [brouillonsOpen, setBrouillonsOpen] = useState(false);
@@ -654,6 +656,7 @@ function FinancesPageInner() {
   const TABS: { id: Tab; label: string }[] = [
     { id: "synthese", label: "Synthèse" },
     { id: "commercial", label: "Commercial" },
+    { id: "chantiers", label: "Chantiers" },
     { id: "finance", label: "Finance" },
   ];
 
@@ -795,14 +798,19 @@ function FinancesPageInner() {
                           </div>
                         ))}
                         {chantiersTotal > 0 && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                            {[
-                              { label: `${chantiersNonDemarre} à démarrer`, color: "oklch(0.52 0.085 245)" },
-                              { label: `${chantiersEnCours} en cours`, color: "var(--accent)" },
-                              { label: `${chantiersTermines} terminés`, color: "oklch(0.55 0.085 155)" },
-                            ].map(({ label, color }) => (
-                              <span key={label} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: `${color}20`, color }}>{label}</span>
-                            ))}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {[
+                                { label: `${chantiersNonDemarre} à démarrer`, color: "oklch(0.52 0.085 245)" },
+                                { label: `${chantiersEnCours} en cours`, color: "var(--accent)" },
+                                { label: `${chantiersTermines} terminés`, color: "oklch(0.55 0.085 155)" },
+                              ].map(({ label, color }) => (
+                                <span key={label} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: `${color}20`, color }}>{label}</span>
+                              ))}
+                            </div>
+                            <button onClick={() => setTab("chantiers")} style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--text-muted)", cursor: "pointer" }}>
+                              Voir le détail →
+                            </button>
                           </div>
                         )}
                       </div>
@@ -987,6 +995,10 @@ function FinancesPageInner() {
                   <SourceBadge source="interfast" />
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Activité commerciale · Interfast · Exercice {fy.label}</span>
                 </div>
+
+                {/* ── Suivi des devis — filtres interactifs ── */}
+                <SectionLabel label="Suivi des devis" />
+                <DevisTable />
 
                 {!interfastStats ? (
                   <div className="card" style={{ padding: "24px 20px", textAlign: "center" }}>
@@ -1317,6 +1329,17 @@ function FinancesPageInner() {
                     )}
                   </>
                 )}
+              </>
+            )}
+
+            {/* ══ CHANTIERS ════════════════════════════════════════════════════ */}
+            {tab === "chantiers" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <SourceBadge source="interfast" />
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Suivi des chantiers · Interfast · Vue par flux</span>
+                </div>
+                <ChantierBoard />
               </>
             )}
 
