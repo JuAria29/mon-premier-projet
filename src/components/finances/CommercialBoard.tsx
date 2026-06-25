@@ -12,6 +12,7 @@ interface DevisItem {
   statut: string;
   montant_ht: number;
   created_at_interfast: string | null;
+  created_by: string | null;
 }
 
 interface Settings {
@@ -139,22 +140,27 @@ export function CommercialBoard() {
                 const urgent = days > settings.devis_relance_jours * 2;
                 return (
                   <div key={d.id} style={{
-                    display: "grid", gridTemplateColumns: "90px 1fr 160px 90px 80px",
+                    display: "grid", gridTemplateColumns: "90px 1fr 90px 80px",
                     gap: 0, padding: "11px 16px", alignItems: "center",
                     borderBottom: i < nonRelances.length - 1 ? "1px solid var(--border)" : "none",
                     background: urgent ? "#fff7ed" : i % 2 === 0 ? "var(--surface)" : "var(--surface2)",
                   }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", fontFamily: "monospace" }}>
                       {d.reference ?? "—"}
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, fontFamily: "inherit", fontWeight: 400 }}>
+                        {fmtDate(d.created_at_interfast)}
+                      </div>
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
                         {d.titre || "—"}
                       </div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{d.client || "—"}</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {fmtDate(d.created_at_interfast)}
+                      {d.created_by && (
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1, fontStyle: "italic" }}>
+                          par {d.created_by}
+                        </div>
+                      )}
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>
                       {fmt(Number(d.montant_ht) || 0)}

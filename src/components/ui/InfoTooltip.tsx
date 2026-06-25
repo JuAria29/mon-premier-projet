@@ -1,15 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export function InfoTooltip({ text }: { text: string }) {
-  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  function handleMouseEnter() {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPos({ x: rect.left + rect.width / 2, y: rect.top });
+  }
 
   return (
     <div style={{ position: "relative", display: "inline-flex", lineHeight: 1 }}>
       <button
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
+        ref={btnRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setPos(null)}
         style={{
           width: 15, height: 15, borderRadius: "50%",
           border: "1px solid var(--border)",
@@ -21,13 +29,16 @@ export function InfoTooltip({ text }: { text: string }) {
       >
         i
       </button>
-      {show && (
+      {pos && (
         <div style={{
-          position: "absolute", bottom: "calc(100% + 7px)", left: "50%", transform: "translateX(-50%)",
+          position: "fixed",
+          bottom: `calc(100vh - ${pos.y}px + 7px)`,
+          left: pos.x,
+          transform: "translateX(-50%)",
           background: "oklch(0.28 0.014 60)", color: "#fff",
           fontSize: 12, lineHeight: 1.5, padding: "10px 12px", borderRadius: 10,
           whiteSpace: "pre-wrap", minWidth: 220, maxWidth: 280,
-          boxShadow: "0 4px 16px rgba(40,30,20,0.22)", zIndex: 200, pointerEvents: "none",
+          boxShadow: "0 4px 16px rgba(40,30,20,0.22)", zIndex: 9999, pointerEvents: "none",
         }}>
           {text}
           <div style={{

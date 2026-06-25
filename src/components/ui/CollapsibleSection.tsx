@@ -9,25 +9,14 @@ interface Props {
   info?: string;
   defaultOpen?: boolean;
   children: ReactNode;
-  storageKey?: string;
+  storageKey?: string; // conservé pour compatibilité, non utilisé
 }
 
-function readStorage(key: string, fallback: boolean): boolean {
-  if (typeof window === "undefined") return fallback;
-  const v = localStorage.getItem(key);
-  if (v === null) return fallback;
-  return v === "1";
-}
-
-export function CollapsibleSection({ title, badge, info, defaultOpen = true, children, storageKey }: Props) {
-  const [open, setOpen] = useState(() =>
-    storageKey ? readStorage(storageKey, defaultOpen) : defaultOpen
-  );
+export function CollapsibleSection({ title, badge, info, defaultOpen = false, children }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
 
   function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (storageKey) localStorage.setItem(storageKey, next ? "1" : "0");
+    setOpen((v) => !v);
   }
 
   return (
