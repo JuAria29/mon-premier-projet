@@ -12,7 +12,11 @@ interface DevisResponse {
   total: number;
 }
 interface StatsResponse {
-  topClients: { client: string; count: number; total_ht: number }[];
+  topClients: {
+    client: string; count: number; total_ht: number;
+    count_signed: number; ht_signed: number;
+    count_paid: number;   ht_paid: number;
+  }[];
   byMonth: { month: string; count: number; total_ht: number }[];
 }
 
@@ -202,7 +206,7 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
             {filteredClients.map((c, i) => {
               const pct = Math.round((c.total_ht / maxClientHT) * 100);
               return (
-                <div key={c.client} style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: i < filteredClients.length - 1 ? "1px solid var(--border)" : "none" }}>
+                <div key={c.client} style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: i < filteredClients.length - 1 ? "1px solid var(--border)" : "none" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 20, textAlign: "right", flexShrink: 0 }}>
                     {i + 1}
                   </div>
@@ -210,8 +214,24 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {c.client}
                     </div>
-                    <div style={{ marginTop: 4, height: 4, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ marginTop: 5, height: 4, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: "var(--accent)", borderRadius: 999, transition: "width 0.4s" }} />
+                    </div>
+                    {/* Décompte signé / facturé */}
+                    <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                      {c.count_signed > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: "#f5ede6", color: "#b5612f", border: "1px solid #d4a488" }}>
+                          {c.count_signed} signé{c.count_signed > 1 ? "s" : ""} · {fmt(c.ht_signed)}
+                        </span>
+                      )}
+                      {c.count_paid > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: "#e6f4ed", color: "#16a34a", border: "1px solid #86efac" }}>
+                          {c.count_paid} facturé{c.count_paid > 1 ? "s" : ""} · {fmt(c.ht_paid)}
+                        </span>
+                      )}
+                      {c.count_signed === 0 && c.count_paid === 0 && (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count} devis · aucun signé</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -226,11 +246,11 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
       )}
 
       {/* ── Tendance mensuelle ── */}
-      {stats && stats.byMonth.length > 1 && (
+      {stats && stats.byMonth.length > 0 && (
         <CollapsibleSection
-          title={`Volume mensuel — ${stats.byMonth.length} mois`}
+          title={`Volume mensuel facturé — ${stats.byMonth.length} mois`}
           storageKey="finances.devis.mensuel"
-          info={"Nombre de devis créés et montant HT par mois.\n\nPermet de visualiser les tendances d'activité commerciale, d'anticiper les pics de charge et de mesurer l'impact des actions commerciales dans le temps."}
+          info={"Montant HT et nombre de devis passés en statut Facturé (Payé) par mois.\n\nCe graphique reflète votre CA réellement réalisé mois par mois — pas le volume de chiffrage.\n\nUtilisation : repérez les mois creux pour anticiper les périodes de sous-activité et les pics pour dimensionner les équipes."}
         >
           <div style={{ padding: "12px 16px", display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto" }}>
             {(() => {
