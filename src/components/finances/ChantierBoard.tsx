@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface ChantierItem {
   id: string;
@@ -163,28 +163,18 @@ function KanbanColumn({
 export function ChantierBoard() {
   const [data, setData] = useState<ChantierResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchChantiers = useCallback(async (q: string) => {
+  const fetchChantiers = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200" });
-      if (q.trim()) params.set("q", q.trim());
-      const r = await fetch(`/api/finances/chantiers?${params}`);
+      const r = await fetch("/api/finances/chantiers?limit=200");
       if (r.ok) setData(await r.json());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchChantiers(""); }, [fetchChantiers]);
-
-  function handleSearch(v: string) {
-    setSearch(v);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchChantiers(v), 350);
-  }
+  useEffect(() => { fetchChantiers(); }, [fetchChantiers]);
 
   const allChantiers = data?.chantiers ?? [];
   const summary = data?.summary ?? {};
@@ -216,30 +206,9 @@ export function ChantierBoard() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── Barre de recherche ── */}
+      {/* ── Résumé ── */}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <div style={{ flex: 1, position: "relative" }}>
-          <input
-            type="text"
-            placeholder="Rechercher par titre, client, référence, adresse…"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: "100%", padding: "8px 12px 8px 34px",
-              border: "1.5px solid var(--border)", borderRadius: 10,
-              fontSize: 13, background: "var(--surface)", color: "var(--text)", boxSizing: "border-box",
-              outline: "none",
-            }}
-          />
-          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
-        </div>
-        {search && (
-          <button onClick={() => { setSearch(""); fetchChantiers(""); }}
-            style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: "pointer", color: "var(--text-muted)" }}>
-            Réinitialiser
-          </button>
-        )}
-        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {loading ? "…" : `${total} chantiers`}
         </span>
         {totalLate > 0 && (

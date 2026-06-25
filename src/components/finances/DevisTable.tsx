@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 interface StatusSummary { count: number; total: number; }
@@ -89,15 +89,12 @@ export function DevisTable() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeStatuts, setActiveStatuts] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchData = useCallback(async (statuts: string[], q: string) => {
+  const fetchData = useCallback(async (statuts: string[]) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "1" }); // on veut juste le résumé
+      const params = new URLSearchParams({ limit: "1" });
       if (statuts.length > 0) params.set("statuts", statuts.join(","));
-      if (q.trim()) params.set("q", q.trim());
       const r = await fetch(`/api/finances/devis?${params}`);
       if (r.ok) setData(await r.json());
     } finally {
@@ -110,24 +107,18 @@ export function DevisTable() {
     if (r.ok) setStats(await r.json());
   }, []);
 
-  useEffect(() => { fetchData([], ""); fetchStats(); }, [fetchData, fetchStats]);
-
-  function handleSearch(v: string) {
-    setSearch(v);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchData(activeStatuts, v), 400);
-  }
+  useEffect(() => { fetchData([]); fetchStats(); }, [fetchData, fetchStats]);
 
   function toggleStatut(slug: string) {
     if (slug === "all") {
       setActiveStatuts([]);
-      fetchData([], search);
+      fetchData([]);
     } else {
       const next = activeStatuts.includes(slug)
         ? activeStatuts.filter((s) => s !== slug)
         : [...activeStatuts, slug];
       setActiveStatuts(next);
-      fetchData(next, search);
+      fetchData(next);
     }
   }
 
@@ -207,33 +198,7 @@ export function DevisTable() {
         })}
       </div>
 
-      {/* ── Barre de recherche ── */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <div style={{ flex: 1, position: "relative" }}>
-          <input
-            type="text"
-            placeholder="Rechercher par titre, client, référence…"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: "100%", padding: "8px 12px 8px 34px",
-              border: "1.5px solid var(--border)", borderRadius: 10,
-              fontSize: 13, background: "var(--surface)", color: "var(--text)", boxSizing: "border-box",
-              outline: "none",
-            }}
-          />
-          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
-        </div>
-        {(search || activeStatuts.length > 0) && (
-          <button onClick={() => { setSearch(""); setActiveStatuts([]); fetchData([], ""); }}
-            style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid var(--border)", background: "var(--surface)", fontSize: 12, cursor: "pointer", color: "var(--text-muted)" }}>
-            Réinitialiser
-          </button>
-        )}
-        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-          {loading ? "…" : `${totalCount} devis · ${fmt(totalHT)}`}
-        </span>
-      </div>
+
 
       {/* ── KPIs ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
