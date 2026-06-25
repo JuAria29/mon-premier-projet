@@ -22,47 +22,45 @@ export async function GET(req: NextRequest) {
 
   const rows = data ?? [];
 
-  // Top clients — montant HT global + décompte signé / facturé
+  // Top clients
   const clientMap: Record<string, {
     count: number; total_ht: number;
-    // Acceptés = signed + paid (un devis facturé a forcément été accepté)
-    count_accepted: number; ht_accepted: number;
-    count_paid: number;     ht_paid: number;
+    count_signed: number; ht_signed: number; // acceptés uniquement (Facture Envoyée)
+    count_paid: number;   ht_paid: number;   // facturés uniquement (Facture Payée)
   }> = {};
   for (const r of rows) {
     const key = r.client?.trim() || "—";
-    if (!clientMap[key]) clientMap[key] = { count: 0, total_ht: 0, count_accepted: 0, ht_accepted: 0, count_paid: 0, ht_paid: 0 };
+    if (!clientMap[key]) clientMap[key] = { count: 0, total_ht: 0, count_signed: 0, ht_signed: 0, count_paid: 0, ht_paid: 0 };
     clientMap[key].count++;
     clientMap[key].total_ht += Number(r.montant_ht) || 0;
-    if (r.statut === "signed" || r.statut === "paid") {
-      clientMap[key].count_accepted++;
-      clientMap[key].ht_accepted += Number(r.montant_ht) || 0;
-    }
-    if (r.statut === "paid") {
-      clientMap[key].count_paid++;
-      clientMap[key].ht_paid += Number(r.montant_ht) || 0;
-    }
+    if (r.statut === "signed") { clientMap[key].count_signed++; clientMap[key].ht_signed += Number(r.montant_ht) || 0; }
+    if (r.statut === "paid")   { clientMap[key].count_paid++;   clientMap[key].ht_paid   += Number(r.montant_ht) || 0; }
   }
-  const allClients = Object.entries(clientMap).map(([client, v]) => ({ client, ...v }));
+  const allClients = Object.entries(clientMap).map(([client, v]) => ({
+    client, ...v,
+    // Pour l'affichage du sous-texte colonne 1
+    count_accepted: v.count_signed + v.count_paid,
+    ht_accepted: v.ht_signed + v.ht_paid,
+  }));
 
-  // Colonne 1 : volume de devis (tous statuts) — identifier les demandeurs sans conversion
+  // Colonne 1 : tous les devis reçus
   const topClientsDevis = [...allClients]
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  // Colonne 2 : devis acceptés (signed + paid)
-  const topClientsSigned = allClients
-    .filter((c) => c.count_accepted > 0)
-    .sort((a, b) => b.ht_accepted - a.ht_accepted)
+  // Colonne 2 : devis acceptés (signed uniquement — prix du devis accepté, pas le marché total)
+  const topClientsSigned = [...allClients]
+    .filter((c) => c.count_signed > 0)
+    .sort((a, b) => b.ht_signed - a.ht_signed)
     .slice(0, 10);
 
-  // Colonne 3 : devis facturés (CA réalisé)
-  const topClientsPaid = allClients
+  // Colonne 3 : facturés (paid)
+  const topClientsPaid = [...allClients]
     .filter((c) => c.count_paid > 0)
     .sort((a, b) => b.ht_paid - a.ht_paid)
     .slice(0, 10);
 
-  // Volume mensuel — factures envoyées (signed) + factures payées (paid)
+  // Volume mensuel — Factures Envoyées (signed) + Factures Payées (paid)
   const monthMap: Record<string, { count: number; total_ht: number }> = {};
   for (const r of rows) {
     if (r.statut !== "paid" && r.statut !== "signed") continue;
@@ -75,7 +73,6 @@ export async function GET(req: NextRequest) {
   }
   const byMonth = Object.entries(monthMap)
     .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-12)
     .map(([month, v]) => ({ month, ...v }));
 
   return NextResponse.json({ topClientsDevis, topClientsSigned, topClientsPaid, byMonth });

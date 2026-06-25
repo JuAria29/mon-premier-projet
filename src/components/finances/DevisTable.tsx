@@ -13,8 +13,9 @@ interface DevisResponse {
 }
 interface ClientStat {
   client: string; count: number; total_ht: number;
-  count_accepted: number; ht_accepted: number;
-  count_paid: number;     ht_paid: number;
+  count_signed: number;   ht_signed: number;   // acceptés uniquement
+  count_paid: number;     ht_paid: number;     // facturés uniquement
+  count_accepted: number; ht_accepted: number; // signed + paid (sous-info col 1)
 }
 interface StatsResponse {
   topClientsDevis: ClientStat[];
@@ -243,16 +244,16 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
               })}
             </div>
 
-            {/* Colonne 2 — Acceptés (signed + paid) */}
+            {/* Colonne 2 — Devis acceptés (signed uniquement — prix du devis accepté) */}
             <div style={{ borderRight: "1px solid var(--border)" }}>
               <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "#faf5f2" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#b5612f", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Acceptés
+                  Devis acceptés
                 </span>
               </div>
               {(stats?.topClientsSigned ?? []).map((c, i) => {
-                const max = stats!.topClientsSigned[0].ht_accepted;
-                const pct = Math.round((c.ht_accepted / max) * 100);
+                const max = stats!.topClientsSigned[0].ht_signed;
+                const pct = max > 0 ? Math.round((c.ht_signed / max) * 100) : 0;
                 return (
                   <div key={c.client} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
@@ -262,12 +263,11 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
                         <div style={{ height: "100%", width: `${pct}%`, background: "#b5612f", borderRadius: 999, transition: "width 0.4s" }} />
                       </div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                        {c.count_accepted} accepté{c.count_accepted > 1 ? "s" : ""}
-                        {c.count_paid > 0 ? ` (${c.count_paid} facturé${c.count_paid > 1 ? "s" : ""})` : ""}
+                        {c.count_signed} devis accepté{c.count_signed > 1 ? "s" : ""}
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#b5612f" }}>{fmt(c.ht_accepted)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#b5612f" }}>{fmt(c.ht_signed)}</div>
                       <div style={{ fontSize: 9, color: "var(--text-muted)" }}>HT accepté</div>
                     </div>
                   </div>
@@ -275,16 +275,16 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
               })}
             </div>
 
-            {/* Colonne 3 — Facturés */}
+            {/* Colonne 3 — Facturés (paid) */}
             <div>
               <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "#f0faf4" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Facturés
+                  Facturés payés
                 </span>
               </div>
               {(stats?.topClientsPaid ?? []).map((c, i) => {
                 const max = stats!.topClientsPaid[0].ht_paid;
-                const pct = Math.round((c.ht_paid / max) * 100);
+                const pct = max > 0 ? Math.round((c.ht_paid / max) * 100) : 0;
                 return (
                   <div key={c.client} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
@@ -294,12 +294,12 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
                         <div style={{ height: "100%", width: `${pct}%`, background: "#16a34a", borderRadius: 999, transition: "width 0.4s" }} />
                       </div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-                        dont {c.count_accepted} accepté{c.count_accepted > 1 ? "s" : ""}
+                        {c.count_paid} facture{c.count_paid > 1 ? "s" : ""}
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>{fmt(c.ht_paid)}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>HT facturé</div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>HT payé</div>
                     </div>
                   </div>
                 );
@@ -310,52 +310,96 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
         </CollapsibleSection>
       )}
 
-      {/* ── Tendance mensuelle ── */}
-      {stats && stats.byMonth.length > 0 && (
+      {/* ── Volume mensuel 12 mois ── */}
+      {stats && (
         <CollapsibleSection
-          title={`Volume mensuel facturé — ${stats.byMonth.length} mois`}
+          title="Volume mensuel facturé — 12 mois"
           storageKey="finances.devis.mensuel"
-          info={"Montant HT des factures envoyées + payées par mois, sur l'exercice.\n\nLa ligne pointillée terracotta indique la cible mensuelle (objectif ÷ 12).\nLes barres vertes = mois au-dessus de la cible.\n\nNote : avoirs non déduits."}
+          info={"Montant HT (Factures Envoyées + Payées) par mois sur les 12 mois de l'exercice.\n\nLigne pointillée = cible mensuelle (objectif ÷ 12).\nBarres vertes = mois au-dessus de la cible, gris = en dessous.\nMois futurs affichés vides.\n\nNote : avoirs non déduits."}
         >
           {(() => {
-            const BAR_MAX_H = 80;
-            const maxHT = Math.max(...stats.byMonth.map((m) => m.total_ht), 1);
+            const BAR_MAX_H = 72;
+            // Générer la grille 12 mois de l'exercice
+            const months12: string[] = [];
+            if (exerciceDebut) {
+              const start = new Date(exerciceDebut);
+              for (let i = 0; i < 12; i++) {
+                const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+                months12.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+              }
+            } else {
+              // Fallback : derniers 12 mois du cache
+              stats.byMonth.slice(-12).forEach((m) => months12.push(m.month));
+            }
+            const byMonthMap = Object.fromEntries(stats.byMonth.map((m) => [m.month, m]));
+            const grid = months12.map((key) => {
+              const d = byMonthMap[key];
+              return { month: key, count: d?.count ?? 0, total_ht: d?.total_ht ?? 0 };
+            });
+
             const targetMensuel = caObjectif > 0 ? caObjectif / 12 : 0;
-            const chartMax = Math.max(maxHT, targetMensuel);
-            const targetH = targetMensuel > 0 ? Math.round((targetMensuel / chartMax) * BAR_MAX_H) : 0;
+            const maxHT = Math.max(...grid.map((m) => m.total_ht), targetMensuel, 1);
+            const targetH = Math.round((targetMensuel / maxHT) * BAR_MAX_H);
+            const totalCumul = grid.reduce((s, m) => s + m.total_ht, 0);
+            const pctObjectif = caObjectif > 0 ? Math.min((totalCumul / caObjectif) * 100, 100) : 0;
+            const barProgressColor = pctObjectif >= 100 ? "#16a34a" : pctObjectif >= 75 ? "#b5612f" : pctObjectif >= 50 ? "#2563eb" : "#ea580c";
+
             return (
               <div>
-                {targetMensuel > 0 && (
-                  <div style={{ padding: "8px 16px 0", display: "flex", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
+                {/* Barre de progression cumulative */}
+                <div style={{ padding: "12px 16px 8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>
+                      CA réalisé : <span style={{ color: barProgressColor }}>{fmt(totalCumul)}</span>
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      Objectif {fmt(caObjectif)} · <strong style={{ color: barProgressColor }}>{pctObjectif.toFixed(1)} %</strong>
+                    </span>
+                  </div>
+                  <div style={{ height: 8, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pctObjectif}%`, background: barProgressColor, borderRadius: 999, transition: "width 0.6s ease" }} />
+                  </div>
+                </div>
+
+                {/* Légende */}
+                <div style={{ padding: "0 16px 6px", display: "flex", justifyContent: "flex-end", gap: 12 }}>
+                  {targetMensuel > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text-muted)" }}>
                       <div style={{ width: 18, height: 0, borderTop: "2px dashed #b5612f" }} />
-                      Cible mensuelle {fmt(targetMensuel / 1000, 0)}k€
+                      Cible {fmt(targetMensuel / 1000, 0)}k€/mois
                     </div>
-                  </div>
-                )}
-                <div style={{ padding: "8px 16px 12px", display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto", position: "relative" }}>
+                  )}
+                </div>
+
+                {/* Graphique en barres */}
+                <div style={{ padding: "4px 16px 12px", display: "flex", gap: 4, alignItems: "flex-end", position: "relative" }}>
                   {targetH > 0 && (
                     <div style={{
                       position: "absolute", bottom: `${12 + 18 + targetH}px`,
                       left: 16, right: 16,
-                      borderTop: "1.5px dashed #b5612f",
-                      opacity: 0.6, pointerEvents: "none",
+                      borderTop: "1.5px dashed #b5612f", opacity: 0.5, pointerEvents: "none",
                     }} />
                   )}
-                  {stats.byMonth.map((m) => {
+                  {grid.map((m) => {
                     const [year, month] = m.month.split("-");
                     const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
-                    const h = Math.max(Math.round((m.total_ht / chartMax) * BAR_MAX_H), 4);
-                    const aboveTarget = targetMensuel > 0 && m.total_ht >= targetMensuel;
+                    const isEmpty = m.total_ht === 0;
+                    const h = isEmpty ? 4 : Math.max(Math.round((m.total_ht / maxHT) * BAR_MAX_H), 4);
+                    const aboveTarget = !isEmpty && targetMensuel > 0 && m.total_ht >= targetMensuel;
                     return (
-                      <div key={m.month} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1, minWidth: 40 }}>
-                        <div style={{ fontSize: 9, color: aboveTarget ? "#16a34a" : "var(--text-muted)", fontWeight: 600 }}>{fmt(m.total_ht / 1000, 0)}k</div>
+                      <div key={m.month} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flex: 1, minWidth: 36 }}>
+                        {!isEmpty && (
+                          <div style={{ fontSize: 8, color: aboveTarget ? "#16a34a" : "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                            {m.total_ht >= 1000 ? `${Math.round(m.total_ht / 1000)}k` : fmt(m.total_ht, 0)}
+                          </div>
+                        )}
+                        {isEmpty && <div style={{ fontSize: 8, color: "transparent" }}>—</div>}
                         <div style={{
-                          width: "100%", height: h, borderRadius: "4px 4px 0 0", minHeight: 4,
-                          background: aboveTarget ? "#16a34a" : "var(--accent)", opacity: 0.85,
+                          width: "100%", height: h, borderRadius: "4px 4px 0 0",
+                          background: isEmpty ? "var(--border)" : aboveTarget ? "#16a34a" : "var(--accent)",
+                          opacity: isEmpty ? 0.4 : 0.85,
                         }} />
-                        <div style={{ fontSize: 9, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
-                        <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{m.count}</div>
+                        <div style={{ fontSize: 8, color: "var(--text-muted)", textAlign: "center", whiteSpace: "nowrap" }}>{label}</div>
                       </div>
                     );
                   })}
