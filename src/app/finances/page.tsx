@@ -271,7 +271,12 @@ function FinancesInner() {
                 </span>
               )}
             </div>
-            <CAProgressGauge caObjectif={caObjectif} />
+            <CAProgressGauge
+              caObjectif={caObjectif}
+              exerciceDebut={exercice?.debut}
+              exerciceFin={exercice?.fin}
+              activites={activitesParam}
+            />
             <ActivityFilter selected={activites} onChange={setActivites} />
             <CommercialBoard activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
             <DevisTable activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} caObjectif={caObjectif} />

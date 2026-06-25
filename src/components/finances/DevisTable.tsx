@@ -23,11 +23,6 @@ interface StatsResponse {
   byMonth: { month: string; count: number; total_ht: number }[];
 }
 
-interface MonthStat {
-  debut: string;
-  devis_reel_ht: number;
-  ca_reel_ht: number;
-}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   draft:     { label: "Brouillon",  color: "#64748b", bg: "#f1f5f9",  border: "#cbd5e1" },
@@ -68,7 +63,6 @@ function KpiCard({ label, value, sub, accent, info }: { label: string; value: st
 export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjectif = 0 }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string; caObjectif?: number }) {
   const [data, setData] = useState<DevisResponse | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [monthStats, setMonthStats] = useState<MonthStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeStatuts, setActiveStatuts] = useState<string[]>([]);
 
@@ -99,9 +93,6 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
   useEffect(() => {
     fetchData(activeStatuts);
     fetchStats();
-    fetch("/api/finances/stats")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.monthly) setMonthStats(d.monthly); });
   }, [activites, exerciceDebut, exerciceFin, fetchData, fetchStats]);
 
   function toggleStatut(slug: string) {
@@ -320,16 +311,15 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
       )}
 
       {/* ── Tendance mensuelle ── */}
-      {monthStats.length > 0 && (
+      {stats && stats.byMonth.length > 0 && (
         <CollapsibleSection
-          title={`Volume mensuel facturé — ${monthStats.length} mois`}
+          title={`Volume mensuel facturé — ${stats.byMonth.length} mois`}
           storageKey="finances.devis.mensuel"
-          info={"CA facturé par mois : somme des devis facturés + facturations directes (chantiers, interventions).\n\nSource : données Interfast synchronisées.\n\nUtilisation : repérez les mois creux pour anticiper les périodes de sous-activité et les pics pour dimensionner les équipes."}
+          info={"Montant HT des factures envoyées + payées par mois, sur l'exercice.\n\nLa ligne pointillée terracotta indique la cible mensuelle (objectif ÷ 12).\nLes barres vertes = mois au-dessus de la cible.\n\nNote : avoirs non déduits."}
         >
           {(() => {
             const BAR_MAX_H = 80;
-            const totaux = monthStats.map((m) => (m.devis_reel_ht ?? 0) + (m.ca_reel_ht ?? 0));
-            const maxHT = Math.max(...totaux, 1);
+            const maxHT = Math.max(...stats.byMonth.map((m) => m.total_ht), 1);
             const targetMensuel = caObjectif > 0 ? caObjectif / 12 : 0;
             const chartMax = Math.max(maxHT, targetMensuel);
             const targetH = targetMensuel > 0 ? Math.round((targetMensuel / chartMax) * BAR_MAX_H) : 0;
@@ -352,20 +342,20 @@ export function DevisTable({ activites = [], exerciceDebut, exerciceFin, caObjec
                       opacity: 0.6, pointerEvents: "none",
                     }} />
                   )}
-                  {monthStats.map((m, i) => {
-                    const total = totaux[i];
-                    const d = new Date(m.debut);
-                    const label = d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
-                    const h = Math.max(Math.round((total / chartMax) * BAR_MAX_H), 4);
-                    const aboveTarget = targetMensuel > 0 && total >= targetMensuel;
+                  {stats.byMonth.map((m) => {
+                    const [year, month] = m.month.split("-");
+                    const label = new Date(Number(year), Number(month) - 1).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+                    const h = Math.max(Math.round((m.total_ht / chartMax) * BAR_MAX_H), 4);
+                    const aboveTarget = targetMensuel > 0 && m.total_ht >= targetMensuel;
                     return (
-                      <div key={m.debut} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1, minWidth: 40 }}>
-                        <div style={{ fontSize: 9, color: aboveTarget ? "#16a34a" : "var(--text-muted)", fontWeight: 600 }}>{fmt(total / 1000, 0)}k</div>
+                      <div key={m.month} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1, minWidth: 40 }}>
+                        <div style={{ fontSize: 9, color: aboveTarget ? "#16a34a" : "var(--text-muted)", fontWeight: 600 }}>{fmt(m.total_ht / 1000, 0)}k</div>
                         <div style={{
                           width: "100%", height: h, borderRadius: "4px 4px 0 0", minHeight: 4,
                           background: aboveTarget ? "#16a34a" : "var(--accent)", opacity: 0.85,
                         }} />
                         <div style={{ fontSize: 9, color: "var(--text-muted)", textAlign: "center" }}>{label}</div>
+                        <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{m.count}</div>
                       </div>
                     );
                   })}

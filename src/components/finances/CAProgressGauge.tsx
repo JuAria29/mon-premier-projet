@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Props {
   caObjectif: number;
+  exerciceDebut?: string;
+  exerciceFin?: string;
+  activites?: string[];
 }
 
 const fmt = (n: number) =>
@@ -15,25 +18,29 @@ const fmtK = (n: number) => {
   return fmt(n);
 };
 
-export function CAProgressGauge({ caObjectif }: Props) {
+export function CAProgressGauge({ caObjectif, exerciceDebut, exerciceFin, activites = [] }: Props) {
   const [caFacture, setCaFacture] = useState(0);
-  const [exerciceFin, setExerciceFin] = useState<string | null>(null);
-  const [exerciceDebut, setExerciceDebut] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/finances/stats")
-      .then((r) => r.json())
-      .then((data) => {
-        // Devis réel + CA chantiers/interventions = total facturé réel
-        const devisReel = data.annual?.devis_reel_ht ?? 0;
-        const caReel = data.annual?.ca_reel_ht ?? 0;
-        setCaFacture(devisReel + caReel);
-        setExerciceDebut(data.exercice?.debut ?? null);
-        setExerciceFin(data.exercice?.fin ?? null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Factures Envoyées (signed) + Factures Payées (paid), filtrées par exercice
+      const params = new URLSearchParams({ statuts: "signed,paid", limit: "1" });
+      if (activites.length > 0) params.set("activites", activites.join(","));
+      if (exerciceDebut) params.set("debut", exerciceDebut);
+      if (exerciceFin) params.set("fin", exerciceFin);
+      const r = await fetch(`/api/finances/devis?${params}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      const s = data.summary ?? {};
+      setCaFacture((s.signed?.total ?? 0) + (s.paid?.total ?? 0));
+    } finally {
+      setLoading(false);
+    }
+  }, [activites, exerciceDebut, exerciceFin]);
+
+  useEffect(() => { load(); }, [load]);
 
   const pct = caObjectif > 0 ? Math.min((caFacture / caObjectif) * 100, 100) : 0;
   const restant = Math.max(caObjectif - caFacture, 0);
@@ -46,7 +53,6 @@ export function CAProgressGauge({ caObjectif }: Props) {
     ? Math.round((new Date(exerciceFin).getTime() - new Date(exerciceDebut).getTime()) / (30.44 * 24 * 3600 * 1000))
     : 12;
   const cibleMensuelle = caObjectif > 0 ? caObjectif / nbMoisExercice : 0;
-
   const moisEcoules = nbMoisExercice - (moisRestants ?? 0);
   const cibleADate = cibleMensuelle * moisEcoules;
   const avanceSurCible = caFacture - cibleADate;
@@ -64,12 +70,21 @@ export function CAProgressGauge({ caObjectif }: Props) {
     <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, padding: "20px 24px" }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
-            CA Facturé — Exercice en cours
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              CA Facturé — Exercice en cours
+            </span>
+            {/* Note avoirs */}
+            <span style={{ fontSize: 10, color: "#ea580c", background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 999, padding: "1px 7px", fontWeight: 600 }}>
+              avoirs non déduits
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={{ fontSize: 36, fontWeight: 800, color: barColor, lineHeight: 1 }}>{fmtK(caFacture)}</span>
             <span style={{ fontSize: 14, color: "var(--text-muted)" }}>facturé</span>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+            Factures envoyées + payées · hors avoirs
           </div>
         </div>
         <div style={{ textAlign: "right" }}>

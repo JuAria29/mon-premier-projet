@@ -62,11 +62,10 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.ht_paid - a.ht_paid)
     .slice(0, 10);
 
-  // Volume mensuel — uniquement les devis facturés (paid)
-  // But : anticiper la charge réelle, pas le volume de chiffrage
+  // Volume mensuel — factures envoyées (signed) + factures payées (paid)
   const monthMap: Record<string, { count: number; total_ht: number }> = {};
   for (const r of rows) {
-    if (r.statut !== "paid") continue;
+    if (r.statut !== "paid" && r.statut !== "signed") continue;
     if (!r.created_at_interfast) continue;
     const d = new Date(r.created_at_interfast);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
