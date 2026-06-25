@@ -9,11 +9,20 @@ export async function GET(req: NextRequest) {
 
   const supabase = createSupabaseServiceClient();
 
-  let query = supabase
+  // Dans Interfast, chantier = activite IS NULL. On distingue les cas.
+  const wantsChantier = activites.length === 0 || activites.includes("chantier");
+  const others = activites.filter((a) => a !== "chantier");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query: any = supabase
     .from("interfast_devis_cache")
     .select("client, statut, montant_ht, created_at_interfast");
 
-  if (activites.length > 0) query = query.in("activite", activites);
+  if (activites.length > 0) {
+    if (wantsChantier && others.length === 0) query = query.is("activite", null);
+    else if (!wantsChantier) query = query.in("activite", others);
+    else query = query.or(`activite.is.null,activite.in.(${others.join(",")})`);
+  }
   if (debut) query = query.gte("created_at_interfast", debut);
   if (fin) query = query.lte("created_at_interfast", fin);
 
@@ -25,8 +34,8 @@ export async function GET(req: NextRequest) {
   // Top clients
   const clientMap: Record<string, {
     count: number; total_ht: number;
-    count_signed: number; ht_signed: number; // acceptés uniquement (Facture Envoyée)
-    count_paid: number;   ht_paid: number;   // facturés uniquement (Facture Payée)
+    count_signed: number; ht_signed: number;
+    count_paid: number;   ht_paid: number;
   }> = {};
   for (const r of rows) {
     const key = r.client?.trim() || "—";
@@ -38,29 +47,15 @@ export async function GET(req: NextRequest) {
   }
   const allClients = Object.entries(clientMap).map(([client, v]) => ({
     client, ...v,
-    // Pour l'affichage du sous-texte colonne 1
     count_accepted: v.count_signed + v.count_paid,
     ht_accepted: v.ht_signed + v.ht_paid,
   }));
 
-  // Colonne 1 : tous les devis reçus
-  const topClientsDevis = [...allClients]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  const topClientsDevis = [...allClients].sort((a, b) => b.count - a.count).slice(0, 10);
+  const topClientsSigned = [...allClients].filter((c) => c.count_signed > 0).sort((a, b) => b.ht_signed - a.ht_signed).slice(0, 10);
+  const topClientsPaid = [...allClients].filter((c) => c.count_paid > 0).sort((a, b) => b.ht_paid - a.ht_paid).slice(0, 10);
 
-  // Colonne 2 : devis acceptés (signed uniquement — prix du devis accepté, pas le marché total)
-  const topClientsSigned = [...allClients]
-    .filter((c) => c.count_signed > 0)
-    .sort((a, b) => b.ht_signed - a.ht_signed)
-    .slice(0, 10);
-
-  // Colonne 3 : facturés (paid)
-  const topClientsPaid = [...allClients]
-    .filter((c) => c.count_paid > 0)
-    .sort((a, b) => b.ht_paid - a.ht_paid)
-    .slice(0, 10);
-
-  // Volume mensuel — Factures Envoyées (signed) + Factures Payées (paid)
+  // Volume mensuel — signed + paid
   const monthMap: Record<string, { count: number; total_ht: number }> = {};
   for (const r of rows) {
     if (r.statut !== "paid" && r.statut !== "signed") continue;
