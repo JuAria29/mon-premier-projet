@@ -49,15 +49,18 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200", statuts: "sent,signed,paid" });
+      const params = new URLSearchParams({ limit: "500", statuts: "sent,signed,paid" });
       if (activites.length > 0) params.set("activites", activites.join(","));
       if (exerciceDebut) params.set("debut", exerciceDebut);
       if (exerciceFin) params.set("fin", exerciceFin);
       const devisUrl = `/api/finances/devis?${params}`;
+      const statsParams = new URLSearchParams();
+      if (exerciceDebut) statsParams.set("debut", exerciceDebut);
+      if (exerciceFin) statsParams.set("fin", exerciceFin);
       const [sRes, dRes, statsRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
         fetch(devisUrl).then((r) => r.json()),
-        fetch("/api/finances/stats").then((r) => r.json()),
+        fetch(`/api/finances/stats?${statsParams}`).then((r) => r.json()),
       ]);
 
       const s = {

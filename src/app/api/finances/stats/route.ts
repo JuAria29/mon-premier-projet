@@ -3,7 +3,11 @@ import { createSupabaseServiceClient } from "@/lib/supabase";
 
 function parseNum(v: unknown) { return Number(v) || 0; }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const debutOverride = searchParams.get("debut") ?? "";
+  const finOverride = searchParams.get("fin") ?? "";
+
   const supabase = createSupabaseServiceClient();
 
   // Charger paramètres
@@ -40,12 +44,16 @@ export async function GET() {
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+  // Utiliser les dates passées en param si présentes (sinon calcul depuis settings)
+  const rangeDebut = debutOverride || fmt(exerciceStart);
+  const rangeFin = finOverride || fmt(exerciceEnd);
+
   // Charger les mois de l'exercice
   const { data: rows } = await supabase
     .from("interfast_stats_cache")
     .select("*")
-    .gte("debut", fmt(exerciceStart))
-    .lte("fin", fmt(exerciceEnd))
+    .gte("debut", rangeDebut)
+    .lte("fin", rangeFin)
     .order("debut");
 
   const months = rows ?? [];

@@ -103,17 +103,20 @@ function BarChart({ data, valueKey, labelKey, maxVal }: {
   );
 }
 
-export function StrategieBoard() {
+export function StrategieBoard({ exerciceDebut, exerciceFin }: { exerciceDebut?: string; exerciceFin?: string }) {
   const [data, setData] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("annual");
 
   useEffect(() => {
-    fetch("/api/finances/stats")
+    const p = new URLSearchParams();
+    if (exerciceDebut) p.set("debut", exerciceDebut);
+    if (exerciceFin) p.set("fin", exerciceFin);
+    fetch(`/api/finances/stats?${p}`)
       .then((r) => r.json())
       .then(setData)
       .finally(() => setLoading(false));
-  }, []);
+  }, [exerciceDebut, exerciceFin]);
 
   if (loading) return <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Chargement…</div>;
 

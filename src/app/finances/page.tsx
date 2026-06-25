@@ -254,7 +254,7 @@ function FinancesInner() {
               <SourceBadge source="Interfast" />
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Données Interfast · Exercice fiscal personnalisable</span>
             </div>
-            <StrategieBoard />
+            <StrategieBoard exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
           </div>
         )}
 
