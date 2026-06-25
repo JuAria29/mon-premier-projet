@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 interface StatsMonth {
   id: string;
@@ -195,39 +196,38 @@ export function StrategieBoard() {
       </div>
 
       {/* ── KPI cards ── */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <KpiCard
-          label="Marge nette estimée"
-          value={fmtK(kpis.margeNette)}
-          sub={`Après ${settings.fgCoefficient} % de frais généraux`}
-          accent
-        />
-        <KpiCard
-          label="Devis signés (entrées)"
-          value={fmtK(annual.devis_signes_ht)}
-          sub="Nouveau CA signé sur l'exercice"
-        />
-        <KpiCard
-          label="Pipeline prévisionnel"
-          value={fmtK(annual.devis_previsionnel_ht)}
-          sub="Total devis en cours"
-        />
-        <KpiCard
-          label="À encaisser"
-          value={fmtK(annual.ca_en_retard_ht ?? 0)}
-          sub="CA en retard de règlement"
-          color={annual.ca_en_retard_ht > 5000 ? "#dc2626" : undefined}
-        />
-      </div>
+      <CollapsibleSection title="Indicateurs clés" storageKey="finances.strategie.kpis">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", padding: "12px 16px" }}>
+          <KpiCard
+            label="Marge nette estimée"
+            value={fmtK(kpis.margeNette)}
+            sub={`Après ${settings.fgCoefficient} % de frais généraux`}
+            accent
+          />
+          <KpiCard
+            label="Devis signés (entrées)"
+            value={fmtK(annual.devis_signes_ht)}
+            sub="Nouveau CA signé sur l'exercice"
+          />
+          <KpiCard
+            label="Pipeline prévisionnel"
+            value={fmtK(annual.devis_previsionnel_ht)}
+            sub="Total devis en cours"
+          />
+          <KpiCard
+            label="À encaisser"
+            value={fmtK(annual.ca_en_retard_ht ?? 0)}
+            sub="CA en retard de règlement"
+            color={annual.ca_en_retard_ht > 5000 ? "#dc2626" : undefined}
+          />
+        </div>
+      </CollapsibleSection>
 
       {/* ── Graphique selon la vue ── */}
-      <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            CA réalisé —{" "}
-            {view === "annual" ? "Vue annuelle" : view === "quarterly" ? "Par trimestre" : "Par mois"}
-          </span>
-        </div>
+      <CollapsibleSection
+        title={`CA réalisé — ${view === "annual" ? "Vue annuelle" : view === "quarterly" ? "Par trimestre" : "Par mois"}`}
+        storageKey="finances.strategie.graphique"
+      >
         <div style={{ padding: "16px" }}>
           {view === "monthly" && monthlyChart.length > 0 && (
             <BarChart data={monthlyChart} valueKey="ca_reel_ht" labelKey="label" maxVal={maxMonthly} />
@@ -253,7 +253,7 @@ export function StrategieBoard() {
             </div>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
     </div>
   );

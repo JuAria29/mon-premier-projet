@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 interface StatusSummary { count: number; total: number; }
 interface DevisResponse {
@@ -256,12 +257,7 @@ export function DevisTable() {
 
       {/* ── Top clients ── */}
       {filteredClients.length > 0 && (
-        <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Top clients — Montant HT
-            </span>
-          </div>
+        <CollapsibleSection title="Top clients — Montant HT" storageKey="finances.devis.topclients">
           <div style={{ padding: "8px 0" }}>
             {filteredClients.map((c, i) => {
               const pct = Math.round((c.total_ht / maxClientHT) * 100);
@@ -286,17 +282,12 @@ export function DevisTable() {
               );
             })}
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* ── Tendance mensuelle ── */}
       {stats && stats.byMonth.length > 1 && (
-        <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Volume mensuel — {stats.byMonth.length} mois
-            </span>
-          </div>
+        <CollapsibleSection title={`Volume mensuel — ${stats.byMonth.length} mois`} storageKey="finances.devis.mensuel">
           <div style={{ padding: "12px 16px", display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto" }}>
             {(() => {
               const maxHT = Math.max(...stats.byMonth.map((m) => m.total_ht), 1);
@@ -315,7 +306,7 @@ export function DevisTable() {
               });
             })()}
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
     </div>

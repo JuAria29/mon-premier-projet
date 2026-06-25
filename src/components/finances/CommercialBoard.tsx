@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 interface DevisItem {
   id: string;
@@ -102,16 +103,15 @@ export function CommercialBoard() {
       </div>
 
       {/* ── Devis non relancés ── */}
-      <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1.5px solid var(--border)", background: "var(--surface2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Devis non relancés — depuis + de {settings.devis_relance_jours} jours
-          </span>
+      <CollapsibleSection
+        title={`Devis non relancés — depuis + de ${settings.devis_relance_jours} jours`}
+        badge={
           <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "#fff7ed", color: "#ea580c", border: "1px solid #fdba74", fontWeight: 700 }}>
             {nonRelances.length} devis · {fmt(manqueAGagner)}
           </span>
-        </div>
-
+        }
+        storageKey="finances.commercial.relances"
+      >
         {nonRelances.length === 0 ? (
           <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
             Aucun devis en attente depuis plus de {settings.devis_relance_jours} jours
@@ -161,7 +161,7 @@ export function CommercialBoard() {
               })}
           </div>
         )}
-      </div>
+      </CollapsibleSection>
 
     </div>
   );
