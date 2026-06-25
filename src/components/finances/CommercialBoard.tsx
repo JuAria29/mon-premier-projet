@@ -41,7 +41,10 @@ function daysSince(dateStr: string | null): number {
 
 export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string }) {
   const [settings, setSettings] = useState<Settings>({ ca_objectif: 600000, commission_commercial: 8, devis_relance_jours: 30 });
-  const [signedData, setSignedData] = useState<{ summary: Record<string, { count: number; total: number }> } | null>(null);
+  const [caAccepte, setCaAccepte] = useState(0);
+  const [nbAccepte, setNbAccepte] = useState(0);
+  const [caEnvoye, setCaEnvoye] = useState(0);
+  const [nbEnvoye, setNbEnvoye] = useState(0);
   const [commission, setCommission] = useState<ChantierCommission>({ facture: 0, encaisse: 0 });
   const [nonRelances, setNonRelances] = useState<DevisItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,20 +52,27 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "500", statuts: "sent,signed,paid" });
-      if (activites.length > 0) params.set("activites", activites.join(","));
-      if (exerciceDebut) params.set("debut", exerciceDebut);
-      if (exerciceFin) params.set("fin", exerciceFin);
-      const devisUrl = `/api/finances/devis?${params}`;
+      // 1. CA Accepté — signed uniquement, filtre activite respecté
+      const accepteParams = new URLSearchParams({ statuts: "signed", limit: "1" });
+      if (activites.length > 0) accepteParams.set("activites", activites.join(","));
+      if (exerciceDebut) accepteParams.set("debut", exerciceDebut);
+      if (exerciceFin) accepteParams.set("fin", exerciceFin);
 
-      // Commission : toujours sur chantier (activite null) indépendamment du filtre activité
-      const commParams = new URLSearchParams({ statuts: "sent,signed,paid", activites: "chantier", limit: "1" });
+      // 2. Devis envoyés — pour relances (sent uniquement)
+      const relanceParams = new URLSearchParams({ limit: "500", statuts: "sent" });
+      if (activites.length > 0) relanceParams.set("activites", activites.join(","));
+      if (exerciceDebut) relanceParams.set("debut", exerciceDebut);
+      if (exerciceFin) relanceParams.set("fin", exerciceFin);
+
+      // 3. Commission — toujours chantier (activite null), signed + paid
+      const commParams = new URLSearchParams({ statuts: "signed,paid", activites: "chantier", limit: "1" });
       if (exerciceDebut) commParams.set("debut", exerciceDebut);
       if (exerciceFin) commParams.set("fin", exerciceFin);
 
-      const [sRes, dRes, commRes] = await Promise.all([
+      const [sRes, accepteRes, relanceRes, commRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
-        fetch(devisUrl).then((r) => r.json()),
+        fetch(`/api/finances/devis?${accepteParams}`).then((r) => r.json()),
+        fetch(`/api/finances/devis?${relanceParams}`).then((r) => r.json()),
         fetch(`/api/finances/devis?${commParams}`).then((r) => r.json()),
       ]);
 
@@ -72,15 +82,26 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
         devis_relance_jours: Number(sRes.devis_relance_jours) || 30,
       };
       setSettings(s);
-      setSignedData(dRes);
+
+      // CA Accepté (signed)
+      const as = accepteRes.summary ?? {};
+      setCaAccepte(as.signed?.total ?? 0);
+      setNbAccepte(as.signed?.count ?? 0);
+
+      // En attente (sent)
+      const rs = relanceRes.summary ?? {};
+      setCaEnvoye(rs.sent?.total ?? 0);
+      setNbEnvoye(rs.sent?.count ?? 0);
+
+      // Commission chantier
       const cs = commRes.summary ?? {};
       setCommission({
-        facture:  cs.signed?.total ?? 0,  // Facture Envoyée — paiement attendu
-        encaisse: cs.paid?.total ?? 0,    // Facture Payée — commission encaissée
+        facture:  cs.signed?.total ?? 0,
+        encaisse: cs.paid?.total ?? 0,
       });
 
-      // Filtre non relancés : envoyés depuis plus de X jours
-      const allSent: DevisItem[] = dRes.devis ?? [];
+      // Relances : devis envoyés non relancés
+      const allSent: DevisItem[] = relanceRes.devis ?? [];
       const nonR = allSent.filter((d) => daysSince(d.created_at_interfast) >= s.devis_relance_jours);
       setNonRelances(nonR);
     } finally {
@@ -92,10 +113,6 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
 
   if (loading) return <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Chargement…</div>;
 
-  const summary = signedData?.summary ?? {};
-  const caAccepte = summary.signed?.total ?? 0;  // Devis acceptés uniquement (Facture Envoyée)
-  const caEnvoye = summary.sent?.total ?? 0;
-  const nbEnvoye = summary.sent?.count ?? 0;
   const rate = settings.commission_commercial / 100;
   const commissionEncaissee = commission.encaisse * rate;
   const commissionFacturee = commission.facture * rate;
@@ -112,10 +129,10 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
         <div style={{ flex: 1, minWidth: 150, background: "var(--accent-soft)", border: "1.5px solid var(--accent)", borderRadius: 14, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em" }}>CA Accepté</span>
-            <InfoTooltip text={"Montant HT des devis acceptés par le client (statut Facture Envoyée).\n\nCe CA est sécurisé — le client a dit oui. La facture a été envoyée mais n'est pas encore payée.\n\nNe comprend pas les devis déjà payés (CA Facturé)."} />
+            <InfoTooltip text={"Montant HT des devis acceptés uniquement (statut Accepté).\n\nSeuls les devis que le client a validés — ni les devis envoyés en attente, ni les devis déjà payés.\n\nIndicateur commercial : ce que tu as vendu sur l'exercice."} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "var(--accent)" }}>{fmt(caAccepte)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Devis acceptés en attente de paiement</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{nbAccepte} devis acceptés</div>
         </div>
 
         {/* Commission encaissée (Facture Payée) */}
