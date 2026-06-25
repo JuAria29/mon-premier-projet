@@ -29,15 +29,51 @@ const PILL_ORDER = ["draft", "finalized", "sent", "signed", "refused", "paid", "
 const fmt = (n: number, d = 0) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(n);
 
-function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
+function KpiCard({ label, value, sub, accent, info }: { label: string; value: string; sub?: string; accent?: boolean; info?: string }) {
+  const [showTip, setShowTip] = useState(false);
   return (
     <div style={{
       background: accent ? "var(--accent-soft)" : "var(--surface)",
       border: `1.5px solid ${accent ? "var(--accent)" : "var(--border)"}`,
-      borderRadius: 14, padding: "16px 20px", flex: 1, minWidth: 140,
+      borderRadius: 14, padding: "16px 20px", flex: 1, minWidth: 140, position: "relative",
     }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: accent ? "var(--accent)" : "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-        {label}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: accent ? "var(--accent)" : "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {label}
+        </div>
+        {info && (
+          <div style={{ position: "relative", lineHeight: 1 }}>
+            <button
+              onMouseEnter={() => setShowTip(true)}
+              onMouseLeave={() => setShowTip(false)}
+              style={{
+                width: 15, height: 15, borderRadius: "50%", border: `1px solid ${accent ? "var(--accent)" : "var(--border)"}`,
+                background: "transparent", cursor: "pointer", padding: 0,
+                fontSize: 9, fontWeight: 700, color: accent ? "var(--accent)" : "var(--text-muted)",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}
+              aria-label="Explication du calcul"
+            >
+              i
+            </button>
+            {showTip && (
+              <div style={{
+                position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+                background: "oklch(0.28 0.014 60)", color: "#fff", fontSize: 11, lineHeight: 1.45,
+                padding: "8px 10px", borderRadius: 9, whiteSpace: "pre-wrap", minWidth: 200, maxWidth: 260,
+                boxShadow: "0 4px 12px rgba(40,30,20,0.18)", zIndex: 100, pointerEvents: "none",
+              }}>
+                {info}
+                <div style={{
+                  position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
+                  width: 0, height: 0,
+                  borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+                  borderTop: "5px solid oklch(0.28 0.014 60)",
+                }} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ? "var(--accent)" : "var(--text)", lineHeight: 1 }}>
         {value}
@@ -200,10 +236,22 @@ export function DevisTable() {
 
       {/* ── KPIs ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <KpiCard label="CA Signé + Facturé" value={fmt(caGagne)} sub={`${countGagne} devis`} accent />
-        <KpiCard label="Pipeline actif" value={fmt(caPipeline)} sub={`${countPipeline} en cours`} />
-        <KpiCard label="Taux de signature" value={`${tauxSig} %`} sub={`sur ${base} devis traités`} />
-        <KpiCard label="Panier moyen" value={fmt(panierMoyen)} sub="par devis" />
+        <KpiCard
+          label="CA Signé + Facturé" value={fmt(caGagne)} sub={`${countGagne} devis`} accent
+          info={"Somme des montants HT des devis :\n• Acceptés (Signé)\n• Facturés (Payé)"}
+        />
+        <KpiCard
+          label="Pipeline actif" value={fmt(caPipeline)} sub={`${countPipeline} en cours`}
+          info={"Somme des montants HT des devis :\n• Envoyés (en attente de réponse)\n• Finalisés (prêts à envoyer)\n\nReprésentent le CA potentiel à signer."}
+        />
+        <KpiCard
+          label="Taux de signature" value={`${tauxSig} %`} sub={`sur ${base} devis traités`}
+          info={`Devis signés ou facturés ÷ (signés + facturés + envoyés + finalisés + refusés)\n\nExclut les brouillons et annulés.\nBase actuelle : ${base} devis.`}
+        />
+        <KpiCard
+          label="Panier moyen" value={fmt(panierMoyen)} sub="par devis"
+          info={"Montant HT total ÷ nombre total de devis\n(tous statuts confondus, hors filtres)"}
+        />
       </div>
 
       {/* ── Top clients ── */}

@@ -7,6 +7,7 @@ import { StrategieBoard } from "@/components/finances/StrategieBoard";
 import { CommercialBoard } from "@/components/finances/CommercialBoard";
 import { ChantierBoard } from "@/components/finances/ChantierBoard";
 import { ParametresBoard } from "@/components/finances/ParametresBoard";
+import { DevisTable } from "@/components/finances/DevisTable";
 
 type Tab = "strategie" | "commercial" | "chantiers" | "parametres";
 
@@ -100,6 +101,7 @@ function FinancesInner() {
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pipeline devis · Commissions · Relances</span>
             </div>
             <CommercialBoard />
+            <DevisTable />
           </div>
         )}
 
