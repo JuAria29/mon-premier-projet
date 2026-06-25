@@ -271,15 +271,20 @@ function FinancesInner() {
                 </span>
               )}
             </div>
-            <CAProgressGauge
-              caObjectif={caObjectif}
-              exerciceDebut={exercice?.debut}
-              exerciceFin={exercice?.fin}
-              activites={activitesParam}
-            />
-            <ActivityFilter selected={activites} onChange={setActivites} />
-            <CommercialBoard activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
-            <DevisTable activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} caObjectif={caObjectif} />
+            {!exercice && (
+              <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Chargement de l'exercice…</div>
+            )}
+            {exercice && (<>
+              <CAProgressGauge
+                caObjectif={caObjectif}
+                exerciceDebut={exercice.debut}
+                exerciceFin={exercice.fin}
+                activites={activitesParam}
+              />
+              <ActivityFilter selected={activites} onChange={setActivites} />
+              <CommercialBoard activites={activitesParam} exerciceDebut={exercice.debut} exerciceFin={exercice.fin} />
+              <DevisTable activites={activitesParam} exerciceDebut={exercice.debut} exerciceFin={exercice.fin} caObjectif={caObjectif} />
+            </>)}
           </div>
         )}
 
