@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PageGuard } from "@/components/ui/PageGuard";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { StrategieBoard } from "@/components/finances/StrategieBoard";
 import { CommercialBoard } from "@/components/finances/CommercialBoard";
 import { ParametresBoard } from "@/components/finances/ParametresBoard";
@@ -208,6 +209,7 @@ function FinancesInner() {
 
   return (
     <PageGuard module="finances">
+    <AppLayout>
       <div style={{ padding: "24px 24px 48px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* ── En-tête ── */}
@@ -292,6 +294,7 @@ function FinancesInner() {
         )}
 
       </div>
+    </AppLayout>
     </PageGuard>
   );
 }
