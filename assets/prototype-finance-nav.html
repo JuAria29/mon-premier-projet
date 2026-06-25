@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aria Coach — Comparaison navigation Finance</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --accent: #b5612f; --accent-soft: #f5ede6; --accent-strong: #8a4620;
+    --bg: oklch(0.985 0.005 75); --surface: #ffffff; --surface2: oklch(0.972 0.006 75);
+    --border: oklch(0.918 0.006 70); --text: oklch(0.28 0.014 60);
+    --text-soft: oklch(0.37 0.012 60); --text-muted: oklch(0.545 0.012 60);
+    --blue: oklch(0.52 0.085 245); --green: oklch(0.55 0.085 155);
+  }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); padding: 32px 24px 64px; -webkit-font-smoothing: antialiased; }
+
+  h1 { font-size: 26px; font-weight: 800; text-align: center; margin-bottom: 6px; }
+  .intro { text-align: center; font-size: 14px; color: var(--text-muted); margin-bottom: 48px; }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1100px; margin: 0 auto; }
+
+  .option { }
+  .option-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-muted); margin-bottom: 12px; text-align: center;
+  }
+  .option-title { font-size: 17px; font-weight: 800; text-align: center; margin-bottom: 4px; }
+  .option-desc { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 20px; line-height: 1.6; }
+
+  /* App shell mockup */
+  .shell {
+    border: 1.5px solid var(--border); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(40,30,20,0.10); background: var(--surface2);
+  }
+  .shell-topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .shell-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .shell-body { display: flex; height: 380px; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 170px; flex-shrink: 0; background: var(--surface);
+    border-right: 1px solid var(--border); padding: 14px 10px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .nav-item {
+    padding: 8px 10px; border-radius: 9px; font-size: 12px; font-weight: 500;
+    color: var(--text-soft); display: flex; align-items: center; gap: 8px;
+  }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  .nav-icon { font-size: 13px; }
+
+  /* Sub-items (option A) */
+  .sub-item {
+    padding: 6px 10px 6px 28px; border-radius: 8px; font-size: 11px; font-weight: 500;
+    color: var(--text-muted); display: flex; align-items: center; gap: 6px;
+  }
+  .sub-item.active { background: #fff3ec; color: var(--accent-strong); font-weight: 700; }
+  .sub-item::before { content: "→"; font-size: 10px; color: var(--accent); }
+
+  /* Main content */
+  .main-content { flex: 1; padding: 16px; overflow: hidden; }
+
+  /* Option B — widget finance */
+  .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .widget {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  }
+  .widget-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 10px; }
+  .kpi-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .kpi-row:last-child { border-bottom: none; }
+  .kpi-label { font-size: 11px; color: var(--text-muted); }
+  .kpi-val { font-size: 12px; font-weight: 700; color: var(--text); }
+  .kpi-val.accent { color: var(--accent); }
+  .kpi-val.green { color: var(--green); }
+  .kpi-val.alert { color: #dc2626; }
+  .widget-link {
+    display: block; text-align: center; margin-top: 10px; padding: 5px;
+    border-radius: 7px; background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-weight: 600;
+  }
+
+  .coach-widget {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; grid-column: 1 / -1;
+  }
+  .coach-text { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+  .coach-name { font-size: 10px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+
+  /* Option A — finance tab content */
+  .finance-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .finance-title { font-size: 14px; font-weight: 800; }
+  .tab-pills { display: flex; gap: 6px; }
+  .tab-pill {
+    padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .tab-pill.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+  .finance-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .fkpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .fkpi-label { font-size: 10px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
+  .fkpi-val { font-size: 16px; font-weight: 800; }
+
+  .alert-card {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 10px 12px;
+    font-size: 11px; color: #dc2626; font-weight: 600;
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .badge-a { background: var(--accent-soft); color: var(--accent-strong); }
+  .badge-b { background: #dbeafe; color: #1d4ed8; }
+
+  /* Pro/con */
+  .pros { margin-top: 16px; display: flex; flex-direction: column; gap: 5px; }
+  .pro { font-size: 12px; color: #16a34a; display: flex; align-items: flex-start; gap: 6px; }
+  .con { font-size: 12px; color: #dc2626; display: flex; align-items: flex-start; gap: 6px; }
+
+  @media (max-width: 760px) {
+    .compare { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Navigation Finance — 2 approches</h1>
+<p class="intro">Cliquer sur une option pour choisir</p>
+
+<div class="compare">
+
+  <!-- ── Option A : Sidebar sub-nav ── -->
+  <div class="option">
+    <div class="option-label"><span class="badge badge-a">Option A</span></div>
+    <div class="option-title">Sous-navigation dans la sidebar</div>
+    <div class="option-desc">Les sections Finance s'affichent comme sous-liens quand on est dans Finance. On reste toujours sur la même page.</div>
+
+    <div class="shell">
+      <div class="shell-topbar">
+        <div class="shell-dot" style="background:#ff5f57"></div>
+        <div class="shell-dot" style="background:#febc2e"></div>
+        <div class="shell-dot" style="background:#28c840"></div>
+        <span style="margin-left:8px; font-size:11px; color:var(--text-muted)">Aria Coach — Finances</span>
+      </div>
+      <div class="shell-body">
+        <div class="sidebar">
+          <div class="nav-item"><span class="nav-icon">🏠</span>Aujourd'hui</div>
+          <div class="nav-item"><span class="nav-icon">🎯</span>Objectifs</div>
+          <div class="nav-item"><span class="nav-icon">📧</span>Mails</div>
+          <div class="nav-item active"><span class="nav-icon">📊</span>Finances</div>
+          <!-- Sub-items -->
+          <div class="sub-item active">Synthèse</div>
+          <div class="sub-item">Commercial</div>
+          <div class="sub-item" style="padding-left:40px; color:#dc2626; font-size:10px;">⚠ Alertes (2)</div>
+          <div class="sub-item" style="padding-left:40px; font-size:10px;">Stats commerciales</div>
+          <div class="sub-item" style="padding-left:40px; font-size:10px;">CA Vendu</div>
+          <div class="sub-item" style="padding-left:40px; font-size:10px;">Analyse pôles</div>
+          <div class="nav-item"><span class="nav-icon">📅</span>Agenda</div>
+        </div>
+        <div class="main-content">
+          <div class="finance-header">
+            <div class="finance-title">📊 Finances</div>
+          </div>
+          <div class="finance-kpis">
+            <div class="fkpi"><div class="fkpi-label">CA Facturé</div><div class="fkpi-val" style="color:var(--accent)">142k€</div></div>
+            <div class="fkpi"><div class="fkpi-label">Carnet</div><div class="fkpi-val" style="color:var(--blue)">89k€</div></div>
+            <div class="fkpi"><div class="fkpi-label">Impayés</div><div class="fkpi-val" style="color:#dc2626">12k€</div></div>
+          </div>
+          <div class="alert-card">⚠️ 4 devis à établir dont 1 depuis 69 jours</div>
+          <div style="margin-top:8px; font-size:11px; color:var(--text-muted); background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px;">
+            <div style="font-weight:700; margin-bottom:4px;">Synthèse en cours d'affichage…</div>
+            Cliquez sur "Commercial" dans la sidebar pour voir le pipeline.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pros">
+      <div class="pro">✓ Navigation très rapide — un clic suffit</div>
+      <div class="pro">✓ On voit toujours où on est dans la hiérarchie</div>
+      <div class="pro">✓ Pas besoin de revenir au dashboard pour changer de section</div>
+      <div class="con">✗ La sidebar devient plus longue quand Finance est ouvert</div>
+    </div>
+  </div>
+
+  <!-- ── Option B : Widget dashboard ── -->
+  <div class="option">
+    <div class="option-label"><span class="badge badge-b">Option B</span></div>
+    <div class="option-title">Widget Finance sur le dashboard</div>
+    <div class="option-desc">Le dashboard principal affiche un résumé Finance avec les KPIs clés et des liens rapides. On reste sur la page d'accueil.</div>
+
+    <div class="shell">
+      <div class="shell-topbar">
+        <div class="shell-dot" style="background:#ff5f57"></div>
+        <div class="shell-dot" style="background:#febc2e"></div>
+        <div class="shell-dot" style="background:#28c840"></div>
+        <span style="margin-left:8px; font-size:11px; color:var(--text-muted)">Aria Coach — Dashboard</span>
+      </div>
+      <div class="shell-body">
+        <div class="sidebar">
+          <div class="nav-item active"><span class="nav-icon">🏠</span>Aujourd'hui</div>
+          <div class="nav-item"><span class="nav-icon">🎯</span>Objectifs</div>
+          <div class="nav-item"><span class="nav-icon">📧</span>Mails</div>
+          <div class="nav-item"><span class="nav-icon">📊</span>Finances</div>
+          <div class="nav-item"><span class="nav-icon">📅</span>Agenda</div>
+        </div>
+        <div class="main-content">
+          <div class="dash-grid">
+            <div class="widget">
+              <div class="widget-title">📊 Finance — ce mois</div>
+              <div class="kpi-row"><span class="kpi-label">CA Facturé</span><span class="kpi-val accent">142k€</span></div>
+              <div class="kpi-row"><span class="kpi-label">Carnet</span><span class="kpi-val">89k€</span></div>
+              <div class="kpi-row"><span class="kpi-label">Impayés</span><span class="kpi-val alert">12k€</span></div>
+              <div class="kpi-row"><span class="kpi-label">⚠ Devis à faire</span><span class="kpi-val alert">4</span></div>
+              <a class="widget-link">→ Voir les finances</a>
+            </div>
+            <div class="widget">
+              <div class="widget-title">📋 Commercial</div>
+              <div class="kpi-row"><span class="kpi-label">Brouillons</span><span class="kpi-val">6</span></div>
+              <div class="kpi-row"><span class="kpi-label">Devis envoyés</span><span class="kpi-val">12</span></div>
+              <div class="kpi-row"><span class="kpi-label">Taux conversion</span><span class="kpi-val green">68%</span></div>
+              <div class="kpi-row"><span class="kpi-label">CA potentiel</span><span class="kpi-val">34k€</span></div>
+              <a class="widget-link">→ Voir le pipeline</a>
+            </div>
+          </div>
+          <div class="coach-widget">
+            <div class="coach-name">ARIA</div>
+            <div class="coach-text">Bonjour Julien. 4 devis à établir dont un en attente depuis 69 jours chez Baudoin Vercken — action prioritaire ce matin.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pros">
+      <div class="pro">✓ Vue d'ensemble immédiate sans changer de page</div>
+      <div class="pro">✓ Intégrable au briefing coach du matin</div>
+      <div class="con">✗ Nécessite quand même de cliquer pour accéder aux détails</div>
+      <div class="con">✗ Dashboard plus chargé en informations</div>
+    </div>
+  </div>
+
+</div>
+
+<p style="text-align:center; margin-top:48px; font-size:12px; color:var(--text-muted);">Aria Coach — Prototype comparaison navigation Finance · 2026</p>
+
+</body>
+</html>

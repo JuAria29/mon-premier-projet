@@ -1,5 +1,6 @@
 -- Cache des statistiques Interfast par mois (base pour les vues annuelle/trimestrielle/mensuelle)
-create table if not exists public.interfast_stats_cache (
+drop table if exists public.interfast_stats_cache;
+create table public.interfast_stats_cache (
   id                    text primary key,   -- format "2025-10" (YYYY-MM)
   debut                 date not null,
   fin                   date not null,
