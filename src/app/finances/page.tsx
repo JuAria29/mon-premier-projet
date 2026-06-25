@@ -7,6 +7,7 @@ import { StrategieBoard } from "@/components/finances/StrategieBoard";
 import { CommercialBoard } from "@/components/finances/CommercialBoard";
 import { ParametresBoard } from "@/components/finances/ParametresBoard";
 import { DevisTable } from "@/components/finances/DevisTable";
+import { CAProgressGauge } from "@/components/finances/CAProgressGauge";
 
 type Tab = "strategie" | "commercial" | "parametres";
 type Activite = "chantier" | "maintenance" | "sav";
@@ -183,11 +184,13 @@ function FinancesInner() {
   });
   const [activites, setActivites] = useState<Activite[]>(ALL_ACTIVITES);
   const [exercice, setExercice] = useState<{ debut: string; fin: string } | null>(null);
+  const [caObjectif, setCaObjectif] = useState(600000);
 
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
+        setCaObjectif(Number(data.ca_objectif) || 600000);
         setExercice(computeExerciceDates(
           String(data.exercice_debut || "10-01"),
           String(data.exercice_fin || "09-30"),
@@ -266,9 +269,15 @@ function FinancesInner() {
                 </span>
               )}
             </div>
+            <CAProgressGauge
+              exerciceDebut={exercice?.debut}
+              exerciceFin={exercice?.fin}
+              activites={activitesParam}
+              caObjectif={caObjectif}
+            />
             <ActivityFilter selected={activites} onChange={setActivites} />
             <CommercialBoard activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
-            <DevisTable activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
+            <DevisTable activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} caObjectif={caObjectif} />
           </div>
         )}
 
