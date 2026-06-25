@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 
 interface StatusSummary { count: number; total: number; }
 interface DevisResponse {
@@ -31,50 +32,17 @@ const fmt = (n: number, d = 0) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(n);
 
 function KpiCard({ label, value, sub, accent, info }: { label: string; value: string; sub?: string; accent?: boolean; info?: string }) {
-  const [showTip, setShowTip] = useState(false);
   return (
     <div style={{
       background: accent ? "var(--accent-soft)" : "var(--surface)",
       border: `1.5px solid ${accent ? "var(--accent)" : "var(--border)"}`,
-      borderRadius: 14, padding: "16px 20px", flex: 1, minWidth: 140, position: "relative",
+      borderRadius: 14, padding: "16px 20px", flex: 1, minWidth: 140,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: accent ? "var(--accent)" : "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
           {label}
         </div>
-        {info && (
-          <div style={{ position: "relative", lineHeight: 1 }}>
-            <button
-              onMouseEnter={() => setShowTip(true)}
-              onMouseLeave={() => setShowTip(false)}
-              style={{
-                width: 15, height: 15, borderRadius: "50%", border: `1px solid ${accent ? "var(--accent)" : "var(--border)"}`,
-                background: "transparent", cursor: "pointer", padding: 0,
-                fontSize: 9, fontWeight: 700, color: accent ? "var(--accent)" : "var(--text-muted)",
-                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-              }}
-              aria-label="Explication du calcul"
-            >
-              i
-            </button>
-            {showTip && (
-              <div style={{
-                position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
-                background: "oklch(0.28 0.014 60)", color: "#fff", fontSize: 11, lineHeight: 1.45,
-                padding: "8px 10px", borderRadius: 9, whiteSpace: "pre-wrap", minWidth: 200, maxWidth: 260,
-                boxShadow: "0 4px 12px rgba(40,30,20,0.18)", zIndex: 100, pointerEvents: "none",
-              }}>
-                {info}
-                <div style={{
-                  position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)",
-                  width: 0, height: 0,
-                  borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
-                  borderTop: "5px solid oklch(0.28 0.014 60)",
-                }} />
-              </div>
-            )}
-          </div>
-        )}
+        {info && <InfoTooltip text={info} />}
       </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ? "var(--accent)" : "var(--text)", lineHeight: 1 }}>
         {value}
@@ -222,7 +190,11 @@ export function DevisTable() {
 
       {/* ── Top clients ── */}
       {filteredClients.length > 0 && (
-        <CollapsibleSection title="Top clients — Montant HT" storageKey="finances.devis.topclients">
+        <CollapsibleSection
+          title="Top clients — Montant HT"
+          storageKey="finances.devis.topclients"
+          info={"Classement de vos clients par montant HT total de devis, tous statuts confondus.\n\nPermet d'identifier vos comptes clés à fidéliser en priorité et de détecter les clients à fort potentiel qui méritent plus d'attention commerciale."}
+        >
           <div style={{ padding: "8px 0" }}>
             {filteredClients.map((c, i) => {
               const pct = Math.round((c.total_ht / maxClientHT) * 100);
@@ -252,7 +224,11 @@ export function DevisTable() {
 
       {/* ── Tendance mensuelle ── */}
       {stats && stats.byMonth.length > 1 && (
-        <CollapsibleSection title={`Volume mensuel — ${stats.byMonth.length} mois`} storageKey="finances.devis.mensuel">
+        <CollapsibleSection
+          title={`Volume mensuel — ${stats.byMonth.length} mois`}
+          storageKey="finances.devis.mensuel"
+          info={"Nombre de devis créés et montant HT par mois.\n\nPermet de visualiser les tendances d'activité commerciale, d'anticiper les pics de charge et de mesurer l'impact des actions commerciales dans le temps."}
+        >
           <div style={{ padding: "12px 16px", display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto" }}>
             {(() => {
               const maxHT = Math.max(...stats.byMonth.map((m) => m.total_ht), 1);
