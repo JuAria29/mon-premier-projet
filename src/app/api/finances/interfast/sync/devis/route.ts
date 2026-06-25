@@ -11,6 +11,7 @@ interface DevisItem {
   montant_ttc: number;
   created_at_interfast?: string;
   created_by?: string;
+  activite?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       montant_ttc: d.montant_ttc ?? 0,
       created_at_interfast: d.created_at_interfast ?? null,
       created_by: d.created_by ?? null,
+      activite: d.activite ?? null,
       synced_at: now,
     }));
 

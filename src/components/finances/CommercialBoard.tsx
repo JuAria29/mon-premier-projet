@@ -34,7 +34,7 @@ function daysSince(dateStr: string | null): number {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 }
 
-export function CommercialBoard() {
+export function CommercialBoard({ activites = [] }: { activites?: string[] }) {
   const [settings, setSettings] = useState<Settings>({ ca_objectif: 600000, commission_commercial: 8, devis_relance_jours: 30 });
   const [signedData, setSignedData] = useState<{ summary: Record<string, { count: number; total: number }> } | null>(null);
   const [nonRelances, setNonRelances] = useState<DevisItem[]>([]);
@@ -43,9 +43,12 @@ export function CommercialBoard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const devisUrl = activites.length > 0
+        ? `/api/finances/devis?limit=200&statuts=sent&activites=${activites.join(",")}`
+        : "/api/finances/devis?limit=200&statuts=sent";
       const [sRes, dRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
-        fetch("/api/finances/devis?limit=200&statuts=sent").then((r) => r.json()),
+        fetch(devisUrl).then((r) => r.json()),
       ]);
 
       const s = {
@@ -63,7 +66,7 @@ export function CommercialBoard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activites]);
 
   useEffect(() => { load(); }, [load]);
 

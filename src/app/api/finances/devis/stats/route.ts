@@ -1,13 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const activites = searchParams.get("activites")?.split(",").filter(Boolean) ?? [];
+
   const supabase = createSupabaseServiceClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("interfast_devis_cache")
     .select("client, statut, montant_ht, created_at_interfast");
 
+  if (activites.length > 0) query = query.in("activite", activites);
+
+  const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = data ?? [];
@@ -25,7 +31,7 @@ export async function GET() {
     .sort((a, b) => b.total_ht - a.total_ht)
     .slice(0, 12);
 
-  // Monthly breakdown (last 12 months)
+  // Monthly breakdown
   const monthMap: Record<string, { count: number; total_ht: number }> = {};
   for (const r of rows) {
     if (!r.created_at_interfast) continue;
