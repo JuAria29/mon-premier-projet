@@ -11,12 +11,14 @@ interface DevisResponse {
   summary: Record<string, StatusSummary>;
   total: number;
 }
+interface ClientStat {
+  client: string; count: number; total_ht: number;
+  count_signed: number; ht_signed: number;
+  count_paid: number;   ht_paid: number;
+}
 interface StatsResponse {
-  topClients: {
-    client: string; count: number; total_ht: number;
-    count_signed: number; ht_signed: number;
-    count_paid: number;   ht_paid: number;
-  }[];
+  topClientsSigned: ClientStat[];
+  topClientsPaid: ClientStat[];
   byMonth: { month: string; count: number; total_ht: number }[];
 }
 
@@ -114,9 +116,6 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
   const tauxSig = base > 0 ? Math.round((countGagne / base) * 100) : 0;
   const panierMoyen = totalCount > 0 ? totalHT / totalCount : 0;
 
-  // Filtrage top clients selon statuts actifs
-  const filteredClients = stats?.topClients ?? [];
-  const maxClientHT = filteredClients[0]?.total_ht ?? 1;
 
   if (totalAll === 0 && !loading) {
     return (
@@ -196,51 +195,70 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
       </div>
 
       {/* ── Top clients ── */}
-      {filteredClients.length > 0 && (
+      {(stats?.topClientsSigned.length ?? 0) + (stats?.topClientsPaid.length ?? 0) > 0 && (
         <CollapsibleSection
-          title="Top clients — Montant HT"
+          title="Top clients"
           storageKey="finances.devis.topclients"
-          info={"Classement de vos clients par montant HT total de devis, tous statuts confondus.\n\nPermet d'identifier vos comptes clés à fidéliser en priorité et de détecter les clients à fort potentiel qui méritent plus d'attention commerciale."}
+          info={"Deux classements indépendants :\n• Gauche — clients avec le plus de devis Signés (acceptés, en attente de facturation)\n• Droite — clients avec le plus de devis Facturés (CA réellement encaissé)\n\nCes deux listes peuvent être très différentes : un client peut signer beaucoup mais payer lentement."}
         >
-          <div style={{ padding: "8px 0" }}>
-            {filteredClients.map((c, i) => {
-              const pct = Math.round((c.total_ht / maxClientHT) * 100);
-              return (
-                <div key={c.client} style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: i < filteredClients.length - 1 ? "1px solid var(--border)" : "none" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", width: 20, textAlign: "right", flexShrink: 0 }}>
-                    {i + 1}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.client}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+
+            {/* Colonne Signés */}
+            <div style={{ borderRight: "1px solid var(--border)" }}>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "#faf5f2" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#b5612f", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Signés — Acceptés
+                </span>
+              </div>
+              {(stats?.topClientsSigned ?? []).map((c, i) => {
+                const max = stats!.topClientsSigned[0].ht_signed;
+                const pct = Math.round((c.ht_signed / max) * 100);
+                return (
+                  <div key={c.client} style={{ padding: "9px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
+                      <div style={{ marginTop: 4, height: 3, background: "var(--border)", borderRadius: 999 }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: "#b5612f", borderRadius: 999, transition: "width 0.4s" }} />
+                      </div>
                     </div>
-                    <div style={{ marginTop: 5, height: 4, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${pct}%`, background: "var(--accent)", borderRadius: 999, transition: "width 0.4s" }} />
-                    </div>
-                    {/* Décompte signé / facturé */}
-                    <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
-                      {c.count_signed > 0 && (
-                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: "#f5ede6", color: "#b5612f", border: "1px solid #d4a488" }}>
-                          {c.count_signed} signé{c.count_signed > 1 ? "s" : ""} · {fmt(c.ht_signed)}
-                        </span>
-                      )}
-                      {c.count_paid > 0 && (
-                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: "#e6f4ed", color: "#16a34a", border: "1px solid #86efac" }}>
-                          {c.count_paid} facturé{c.count_paid > 1 ? "s" : ""} · {fmt(c.ht_paid)}
-                        </span>
-                      )}
-                      {c.count_signed === 0 && c.count_paid === 0 && (
-                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count} devis · aucun signé</span>
-                      )}
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#b5612f" }}>{fmt(c.ht_signed)}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count_signed} devis</div>
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{fmt(c.total_ht)}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count} devis</div>
+                );
+              })}
+            </div>
+
+            {/* Colonne Facturés */}
+            <div>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "#f0faf4" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Facturés — CA encaissé
+                </span>
+              </div>
+              {(stats?.topClientsPaid ?? []).map((c, i) => {
+                const max = stats!.topClientsPaid[0].ht_paid;
+                const pct = Math.round((c.ht_paid / max) * 100);
+                return (
+                  <div key={c.client} style={{ padding: "9px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
+                      <div style={{ marginTop: 4, height: 3, background: "var(--border)", borderRadius: 999 }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: "#16a34a", borderRadius: 999, transition: "width 0.4s" }} />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>{fmt(c.ht_paid)}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count_paid} devis</div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
           </div>
         </CollapsibleSection>
       )}

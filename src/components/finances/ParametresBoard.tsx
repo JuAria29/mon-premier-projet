@@ -14,8 +14,8 @@ interface Settings {
 export function ParametresBoard({ onSaved }: { onSaved?: () => void }) {
   const [form, setForm] = useState<Settings>({
     ca_objectif: 600000,
-    exercice_debut: "10-01",
-    exercice_fin: "09-30",
+    exercice_debut: `${new Date().getFullYear()}-10-01`,
+    exercice_fin: `${new Date().getFullYear() + 1}-09-30`,
     fg_coefficient: 35,
     commission_commercial: 8,
     devis_relance_jours: 30,
@@ -27,10 +27,17 @@ export function ParametresBoard({ onSaved }: { onSaved?: () => void }) {
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
+        // Convertit l'ancien format "MM-DD" en "YYYY-MM-DD" si besoin
+        function toFullDate(s: string, isFin: boolean): string {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+          const [m, d] = s.split("-").map(Number);
+          const y = new Date().getFullYear();
+          return `${isFin ? y + 1 : y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        }
         setForm({
           ca_objectif: Number(data.ca_objectif) || 600000,
-          exercice_debut: String(data.exercice_debut || "10-01"),
-          exercice_fin: String(data.exercice_fin || "09-30"),
+          exercice_debut: toFullDate(String(data.exercice_debut || "10-01"), false),
+          exercice_fin: toFullDate(String(data.exercice_fin || "09-30"), true),
           fg_coefficient: Number(data.fg_coefficient) || 35,
           commission_commercial: Number(data.commission_commercial) || 8,
           devis_relance_jours: Number(data.devis_relance_jours) || 30,
@@ -53,7 +60,7 @@ export function ParametresBoard({ onSaved }: { onSaved?: () => void }) {
     }
   }
 
-  function field(label: string, key: keyof Settings, type: "number" | "text", unit?: string, hint?: string) {
+  function field(label: string, key: keyof Settings, type: "number" | "text" | "date", unit?: string, hint?: string) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{label}</label>
@@ -94,8 +101,8 @@ export function ParametresBoard({ onSaved }: { onSaved?: () => void }) {
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
           {field("Objectif CA annuel", "ca_objectif", "number", "€", "CA à atteindre sur l'exercice")}
           <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>{field("Début exercice", "exercice_debut", "text", undefined, "Format MM-JJ (ex: 10-01 pour 1er oct.)")}</div>
-            <div style={{ flex: 1 }}>{field("Fin exercice", "exercice_fin", "text", undefined, "Format MM-JJ (ex: 09-30 pour 30 sept.)")}</div>
+            <div style={{ flex: 1 }}>{field("Début exercice", "exercice_debut", "date", undefined, "Premier jour de l'exercice fiscal")}</div>
+            <div style={{ flex: 1 }}>{field("Fin exercice", "exercice_fin", "date", undefined, "Dernier jour de l'exercice fiscal")}</div>
           </div>
         </div>
       </div>

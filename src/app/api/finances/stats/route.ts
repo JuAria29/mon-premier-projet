@@ -16,18 +16,27 @@ export async function GET() {
   const exerciceDebut = (settings.exercice_debut as string) || "10-01";
   const exerciceFin = (settings.exercice_fin as string) || "09-30";
 
-  // Déterminer l'exercice courant
-  const now = new Date();
-  const year = now.getFullYear();
-  const [debMois, debJour] = exerciceDebut.split("-").map(Number);
-  const exerciceStart = new Date(year, debMois - 1, debJour) > now
-    ? new Date(year - 1, debMois - 1, debJour)
-    : new Date(year, debMois - 1, debJour);
-  const exerciceEnd = new Date(exerciceStart);
-  const [finMois, finJour] = exerciceFin.split("-").map(Number);
-  exerciceEnd.setFullYear(exerciceStart.getFullYear() + 1);
-  exerciceEnd.setMonth(finMois - 1);
-  exerciceEnd.setDate(finJour);
+  // Supporte les deux formats : "MM-DD" (legacy) et "YYYY-MM-DD" (nouveau)
+  function parseExerciceDate(s: string, isFin: boolean): Date {
+    const isFullDate = /^\d{4}-\d{2}-\d{2}$/.test(s);
+    if (isFullDate) return new Date(s + "T00:00:00");
+    // Legacy MM-DD : calcul auto de l'année
+    const [mois, jour] = s.split("-").map(Number);
+    const now = new Date();
+    const y = now.getFullYear();
+    const candidate = new Date(y, mois - 1, jour);
+    if (isFin) {
+      return candidate < now ? candidate : new Date(y - 1, mois - 1, jour);
+    }
+    return candidate > now ? new Date(y - 1, mois - 1, jour) : candidate;
+  }
+
+  const exerciceStart = parseExerciceDate(exerciceDebut, false);
+  const exerciceEnd = parseExerciceDate(exerciceFin, true);
+  // Si fin < début (exercice sur 2 années civiles), ajouter 1 an à la fin
+  if (exerciceEnd <= exerciceStart) {
+    exerciceEnd.setFullYear(exerciceEnd.getFullYear() + 1);
+  }
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 

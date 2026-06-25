@@ -32,10 +32,17 @@ export async function GET(req: NextRequest) {
     if (r.statut === "signed") { clientMap[key].count_signed++; clientMap[key].ht_signed += Number(r.montant_ht) || 0; }
     if (r.statut === "paid")   { clientMap[key].count_paid++;   clientMap[key].ht_paid   += Number(r.montant_ht) || 0; }
   }
-  const topClients = Object.entries(clientMap)
-    .map(([client, v]) => ({ client, ...v }))
-    .sort((a, b) => b.total_ht - a.total_ht)
-    .slice(0, 12);
+  const allClients = Object.entries(clientMap).map(([client, v]) => ({ client, ...v }));
+
+  const topClientsSigned = allClients
+    .filter((c) => c.count_signed > 0)
+    .sort((a, b) => b.ht_signed - a.ht_signed)
+    .slice(0, 10);
+
+  const topClientsPaid = allClients
+    .filter((c) => c.count_paid > 0)
+    .sort((a, b) => b.ht_paid - a.ht_paid)
+    .slice(0, 10);
 
   // Volume mensuel — uniquement les devis facturés (paid)
   // But : anticiper la charge réelle, pas le volume de chiffrage
@@ -54,5 +61,5 @@ export async function GET(req: NextRequest) {
     .slice(-12)
     .map(([month, v]) => ({ month, ...v }));
 
-  return NextResponse.json({ topClients, byMonth });
+  return NextResponse.json({ topClientsSigned, topClientsPaid, byMonth });
 }
