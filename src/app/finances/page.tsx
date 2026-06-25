@@ -5,16 +5,14 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { PageGuard } from "@/components/ui/PageGuard";
 import { StrategieBoard } from "@/components/finances/StrategieBoard";
 import { CommercialBoard } from "@/components/finances/CommercialBoard";
-import { ChantierBoard } from "@/components/finances/ChantierBoard";
 import { ParametresBoard } from "@/components/finances/ParametresBoard";
 import { DevisTable } from "@/components/finances/DevisTable";
 
-type Tab = "strategie" | "commercial" | "chantiers" | "parametres";
+type Tab = "strategie" | "commercial" | "parametres";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "strategie",   label: "Stratégie",   icon: "📊" },
   { id: "commercial",  label: "Commercial",  icon: "📋" },
-  { id: "chantiers",   label: "Chantiers",   icon: "🏗️" },
   { id: "parametres",  label: "Paramètres",  icon: "⚙️" },
 ];
 
@@ -35,7 +33,7 @@ function FinancesInner() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>(() => {
     const t = searchParams.get("tab");
-    return (["strategie", "commercial", "chantiers", "parametres"].includes(t ?? "") ? t : "strategie") as Tab;
+    return (["strategie", "commercial", "parametres"].includes(t ?? "") ? t : "strategie") as Tab;
   });
 
   function switchTab(t: Tab) {
@@ -105,17 +103,7 @@ function FinancesInner() {
           </div>
         )}
 
-        {tab === "chantiers" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <SourceBadge source="Interfast" />
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Suivi des chantiers · Vue par flux</span>
-            </div>
-            <ChantierBoard />
-          </div>
-        )}
-
-        {tab === "parametres" && (
+{tab === "parametres" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <SourceBadge source="Aria" />

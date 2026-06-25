@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { InfoTooltip } from "@/components/ui/InfoTooltip";
 
 interface StatsMonth {
   id: string;
@@ -52,7 +53,7 @@ function GaugeBar({ value, max, color = "var(--accent)" }: { value: number; max:
   );
 }
 
-function KpiCard({ label, value, sub, accent, color }: { label: string; value: string; sub?: string; accent?: boolean; color?: string }) {
+function KpiCard({ label, value, sub, accent, color, info }: { label: string; value: string; sub?: string; accent?: boolean; color?: string; info?: string }) {
   return (
     <div style={{
       flex: 1, minWidth: 140,
@@ -60,8 +61,11 @@ function KpiCard({ label, value, sub, accent, color }: { label: string; value: s
       border: `1.5px solid ${accent ? "var(--accent)" : "var(--border)"}`,
       borderRadius: 14, padding: "16px 18px",
     }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: color ?? (accent ? "var(--accent)" : "var(--text-muted)"), textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-        {label}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: color ?? (accent ? "var(--accent)" : "var(--text-muted)"), textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {label}
+        </div>
+        {info && <InfoTooltip text={info} />}
       </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: color ?? (accent ? "var(--accent)" : "var(--text)"), lineHeight: 1 }}>
         {value}
@@ -169,56 +173,70 @@ export function StrategieBoard() {
       </div>
 
       {/* ── Jauge CA principal ── */}
-      <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, padding: "20px 24px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-          <div>
-            <span style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)" }}>{fmtK(annual.ca_reel_ht)}</span>
-            <span style={{ fontSize: 15, color: "var(--text-muted)", marginLeft: 8 }}>réalisé</span>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Objectif <strong style={{ color: "var(--text)" }}>{fmtK(settings.caObjectif)}</strong></div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: avPct >= 100 ? "#16a34a" : avPct >= 75 ? "var(--accent)" : "#2563eb" }}>
-              {avPct.toFixed(1)} %
+      <CollapsibleSection
+        title="Avancement CA"
+        storageKey="finances.strategie.jauge"
+        info={`CA facturé à ce jour comparé à l'objectif annuel fixé dans Paramètres.\n\nBarre terracotta = CA réalisé\nBarre bleue = prévisionnel (chantiers planifiés non encore facturés)\n\nObjectif modifiable dans l'onglet Paramètres.`}
+      >
+        <div style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <span style={{ fontSize: 32, fontWeight: 800, color: "var(--accent)" }}>{fmtK(annual.ca_reel_ht)}</span>
+              <span style={{ fontSize: 15, color: "var(--text-muted)", marginLeft: 8 }}>réalisé</span>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Objectif <strong style={{ color: "var(--text)" }}>{fmtK(settings.caObjectif)}</strong></div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: avPct >= 100 ? "#16a34a" : avPct >= 75 ? "var(--accent)" : "#2563eb" }}>
+                {avPct.toFixed(1)} %
+              </div>
             </div>
           </div>
-        </div>
-        <GaugeBar value={annual.ca_reel_ht} max={settings.caObjectif} color="var(--accent)" />
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
-          <span>CA prévisionnel : <strong style={{ color: "var(--text)" }}>{fmtK(annual.ca_previsionnel_ht)}</strong> ({prevPct.toFixed(0)} % objectif)</span>
-          <span>Restant : <strong>{fmtK(Math.max(settings.caObjectif - annual.ca_reel_ht, 0))}</strong></span>
-        </div>
-        {annual.ca_previsionnel_ht > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <GaugeBar value={annual.ca_previsionnel_ht} max={settings.caObjectif} color="#93c5fd" />
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>Prévisionnel (chantiers planifiés)</div>
+          <GaugeBar value={annual.ca_reel_ht} max={settings.caObjectif} color="var(--accent)" />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+            <span>CA prévisionnel : <strong style={{ color: "var(--text)" }}>{fmtK(annual.ca_previsionnel_ht)}</strong> ({prevPct.toFixed(0)} % objectif)</span>
+            <span>Restant : <strong>{fmtK(Math.max(settings.caObjectif - annual.ca_reel_ht, 0))}</strong></span>
           </div>
-        )}
-      </div>
+          {annual.ca_previsionnel_ht > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <GaugeBar value={annual.ca_previsionnel_ht} max={settings.caObjectif} color="#93c5fd" />
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>Prévisionnel (chantiers planifiés)</div>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
 
       {/* ── KPI cards ── */}
-      <CollapsibleSection title="Indicateurs clés" storageKey="finances.strategie.kpis">
+      <CollapsibleSection
+        title="Indicateurs clés"
+        storageKey="finances.strategie.kpis"
+        info="4 métriques complémentaires au CA réalisé pour piloter la rentabilité et anticiper l'activité commerciale."
+      >
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", padding: "12px 16px" }}>
           <KpiCard
             label="Marge nette estimée"
             value={fmtK(kpis.margeNette)}
             sub={`Après ${settings.fgCoefficient} % de frais généraux`}
             accent
+            info={`CA réalisé moins les frais généraux.\n\nFormule : CA réalisé × (1 - ${settings.fgCoefficient} %)\n\nC'est votre bénéfice estimé après charges fixes. Taux modifiable dans Paramètres.`}
           />
           <KpiCard
             label="Devis signés (entrées)"
             value={fmtK(annual.devis_signes_ht)}
             sub="Nouveau CA signé sur l'exercice"
+            info="Montant HT total des devis passés en statut Accepté sur l'exercice.\n\nReflète les nouvelles commandes reçues — distinct du CA réalisé (facturé)."
           />
           <KpiCard
             label="Pipeline prévisionnel"
             value={fmtK(annual.devis_previsionnel_ht)}
             sub="Total devis en cours"
+            info="Montant HT des devis encore en cours (Envoyé, Finalisé).\n\nReprésentent le CA potentiel à transformer en signés. À comparer au restant pour atteindre l'objectif."
           />
           <KpiCard
             label="À encaisser"
             value={fmtK(annual.ca_en_retard_ht ?? 0)}
             sub="CA en retard de règlement"
             color={annual.ca_en_retard_ht > 5000 ? "#dc2626" : undefined}
+            info="CA facturé mais non encore réglé par les clients.\n\nEn rouge si > 5 000 € — signale un risque de trésorerie. Action : relancer les clients en attente de règlement."
           />
         </div>
       </CollapsibleSection>
@@ -227,6 +245,7 @@ export function StrategieBoard() {
       <CollapsibleSection
         title={`CA réalisé — ${view === "annual" ? "Vue annuelle" : view === "quarterly" ? "Par trimestre" : "Par mois"}`}
         storageKey="finances.strategie.graphique"
+        info="Visualisation du CA facturé selon la granularité choisie (annuel / trimestriel / mensuel).\n\nPermet de repérer les périodes creuses, les pics d'activité et de mesurer l'impact des actions commerciales dans le temps."
       >
         <div style={{ padding: "16px" }}>
           {view === "monthly" && monthlyChart.length > 0 && (
