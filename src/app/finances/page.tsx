@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PageGuard } from "@/components/ui/PageGuard";
 import { StrategieBoard } from "@/components/finances/StrategieBoard";
@@ -24,6 +24,27 @@ const ACTIVITE_CONFIG: Record<Activite, { label: string; color: string; bg: stri
 };
 
 const ALL_ACTIVITES: Activite[] = ["chantier", "maintenance", "sav"];
+
+// Calcule les dates réelles de l'exercice depuis les settings (format MM-DD ou YYYY-MM-DD)
+function computeExerciceDates(debutSetting: string, finSetting: string): { debut: string; fin: string } {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(debutSetting) && /^\d{4}-\d{2}-\d{2}$/.test(finSetting)) {
+    return { debut: debutSetting, fin: finSetting };
+  }
+  const now = new Date();
+  const [debM, debD] = debutSetting.split("-").map(Number);
+  const inExercice = now.getMonth() + 1 > debM || (now.getMonth() + 1 === debM && now.getDate() >= debD);
+  const y = inExercice ? now.getFullYear() : now.getFullYear() - 1;
+  const debut = `${y}-${String(debM).padStart(2, "0")}-${String(debD).padStart(2, "0")}`;
+  const [finM, finD] = finSetting.split("-").map(Number);
+  const finY = finM < debM ? y + 1 : y;
+  const fin = `${finY}-${String(finM).padStart(2, "0")}-${String(finD).padStart(2, "0")}`;
+  return { debut, fin };
+}
+
+const fmtExercice = (iso: string) => {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+};
 
 const PERSIST_PREF_KEY = "aria.sections.persist";
 
@@ -161,6 +182,18 @@ function FinancesInner() {
     return (["strategie", "commercial", "parametres"].includes(t ?? "") ? t : "strategie") as Tab;
   });
   const [activites, setActivites] = useState<Activite[]>(ALL_ACTIVITES);
+  const [exercice, setExercice] = useState<{ debut: string; fin: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setExercice(computeExerciceDates(
+          String(data.exercice_debut || "10-01"),
+          String(data.exercice_fin || "09-30"),
+        ));
+      });
+  }, []);
 
   function switchTab(t: Tab) {
     setTab(t);
@@ -227,10 +260,15 @@ function FinancesInner() {
                 <SourceBadge source="Interfast" />
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pipeline devis · Commissions · Relances</span>
               </div>
+              {exercice && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 999, padding: "3px 10px" }}>
+                  Exercice {fmtExercice(exercice.debut)} → {fmtExercice(exercice.fin)}
+                </span>
+              )}
             </div>
             <ActivityFilter selected={activites} onChange={setActivites} />
-            <CommercialBoard activites={activitesParam} />
-            <DevisTable activites={activitesParam} />
+            <CommercialBoard activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
+            <DevisTable activites={activitesParam} exerciceDebut={exercice?.debut} exerciceFin={exercice?.fin} />
           </div>
         )}
 

@@ -4,6 +4,8 @@ import { createSupabaseServiceClient } from "@/lib/supabase";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const activites = searchParams.get("activites")?.split(",").filter(Boolean) ?? [];
+  const debut = searchParams.get("debut") ?? "";
+  const fin = searchParams.get("fin") ?? "";
 
   const supabase = createSupabaseServiceClient();
 
@@ -12,6 +14,8 @@ export async function GET(req: NextRequest) {
     .select("client, statut, montant_ht, created_at_interfast");
 
   if (activites.length > 0) query = query.in("activite", activites);
+  if (debut) query = query.gte("created_at_interfast", debut);
+  if (fin) query = query.lte("created_at_interfast", fin);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

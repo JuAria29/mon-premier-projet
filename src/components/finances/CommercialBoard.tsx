@@ -34,7 +34,7 @@ function daysSince(dateStr: string | null): number {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 }
 
-export function CommercialBoard({ activites = [] }: { activites?: string[] }) {
+export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string }) {
   const [settings, setSettings] = useState<Settings>({ ca_objectif: 600000, commission_commercial: 8, devis_relance_jours: 30 });
   const [signedData, setSignedData] = useState<{ summary: Record<string, { count: number; total: number }> } | null>(null);
   const [nonRelances, setNonRelances] = useState<DevisItem[]>([]);
@@ -43,9 +43,11 @@ export function CommercialBoard({ activites = [] }: { activites?: string[] }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const devisUrl = activites.length > 0
-        ? `/api/finances/devis?limit=200&statuts=sent&activites=${activites.join(",")}`
-        : "/api/finances/devis?limit=200&statuts=sent";
+      const params = new URLSearchParams({ limit: "200", statuts: "sent,signed,paid" });
+      if (activites.length > 0) params.set("activites", activites.join(","));
+      if (exerciceDebut) params.set("debut", exerciceDebut);
+      if (exerciceFin) params.set("fin", exerciceFin);
+      const devisUrl = `/api/finances/devis?${params}`;
       const [sRes, dRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
         fetch(devisUrl).then((r) => r.json()),
@@ -66,7 +68,7 @@ export function CommercialBoard({ activites = [] }: { activites?: string[] }) {
     } finally {
       setLoading(false);
     }
-  }, [activites]);
+  }, [activites, exerciceDebut, exerciceFin]);
 
   useEffect(() => { load(); }, [load]);
 

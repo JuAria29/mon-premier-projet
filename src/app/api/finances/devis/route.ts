@@ -5,6 +5,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const statuts = searchParams.get("statuts")?.split(",").filter(Boolean) ?? [];
   const activites = searchParams.get("activites")?.split(",").filter(Boolean) ?? [];
+  const debut = searchParams.get("debut") ?? "";
+  const fin = searchParams.get("fin") ?? "";
   const q = searchParams.get("q") ?? "";
   const page = Math.max(0, parseInt(searchParams.get("page") ?? "0"));
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "50"), 200);
@@ -19,6 +21,8 @@ export async function GET(req: NextRequest) {
 
   if (statuts.length > 0) query = query.in("statut", statuts);
   if (activites.length > 0) query = query.in("activite", activites);
+  if (debut) query = query.gte("created_at_interfast", debut);
+  if (fin) query = query.lte("created_at_interfast", fin);
 
   if (q.trim()) {
     const safe = q.trim().replace(/'/g, "''");
@@ -31,11 +35,13 @@ export async function GET(req: NextRequest) {
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Résumé par statut — filtré par activites (pour KPIs cohérents avec le filtre actif)
+  // Résumé par statut — filtré par activites + exercice (pour KPIs cohérents)
   let summaryQuery = supabase
     .from("interfast_devis_cache")
     .select("statut, montant_ht");
   if (activites.length > 0) summaryQuery = summaryQuery.in("activite", activites);
+  if (debut) summaryQuery = summaryQuery.gte("created_at_interfast", debut);
+  if (fin) summaryQuery = summaryQuery.lte("created_at_interfast", fin);
   const { data: summaryRows } = await summaryQuery;
 
   const summary: Record<string, { count: number; total: number }> = {};

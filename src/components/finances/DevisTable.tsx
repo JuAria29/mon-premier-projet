@@ -59,7 +59,7 @@ function KpiCard({ label, value, sub, accent, info }: { label: string; value: st
   );
 }
 
-export function DevisTable({ activites = [] }: { activites?: string[] }) {
+export function DevisTable({ activites = [], exerciceDebut, exerciceFin }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string }) {
   const [data, setData] = useState<DevisResponse | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,21 +71,25 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
       const params = new URLSearchParams({ limit: "1" });
       if (statuts.length > 0) params.set("statuts", statuts.join(","));
       if (activites.length > 0) params.set("activites", activites.join(","));
+      if (exerciceDebut) params.set("debut", exerciceDebut);
+      if (exerciceFin) params.set("fin", exerciceFin);
       const r = await fetch(`/api/finances/devis?${params}`);
       if (r.ok) setData(await r.json());
     } finally {
       setLoading(false);
     }
-  }, [activites]);
+  }, [activites, exerciceDebut, exerciceFin]);
 
   const fetchStats = useCallback(async () => {
     const params = new URLSearchParams();
     if (activites.length > 0) params.set("activites", activites.join(","));
+    if (exerciceDebut) params.set("debut", exerciceDebut);
+    if (exerciceFin) params.set("fin", exerciceFin);
     const r = await fetch(`/api/finances/devis/stats?${params}`);
     if (r.ok) setStats(await r.json());
-  }, [activites]);
+  }, [activites, exerciceDebut, exerciceFin]);
 
-  useEffect(() => { fetchData(activeStatuts); fetchStats(); }, [activites, fetchData, fetchStats]);
+  useEffect(() => { fetchData(activeStatuts); fetchStats(); }, [activites, exerciceDebut, exerciceFin, fetchData, fetchStats]);
 
   function toggleStatut(slug: string) {
     if (slug === "all") {
