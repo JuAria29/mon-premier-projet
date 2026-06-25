@@ -22,8 +22,8 @@ interface Settings {
 }
 
 interface ChantierCommission {
-  realise: number;  // signed + paid, activite null (chantier), exercice
-  aVenir: number;   // sent, activite null (chantier), exercice
+  facture: number;  // signed (Facture Envoyée, paiement attendu)
+  encaisse: number; // paid (Facture Payée, commission encaissée)
 }
 
 const fmt = (n: number) =>
@@ -42,7 +42,7 @@ function daysSince(dateStr: string | null): number {
 export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string }) {
   const [settings, setSettings] = useState<Settings>({ ca_objectif: 600000, commission_commercial: 8, devis_relance_jours: 30 });
   const [signedData, setSignedData] = useState<{ summary: Record<string, { count: number; total: number }> } | null>(null);
-  const [commission, setCommission] = useState<ChantierCommission>({ realise: 0, aVenir: 0 });
+  const [commission, setCommission] = useState<ChantierCommission>({ facture: 0, encaisse: 0 });
   const [nonRelances, setNonRelances] = useState<DevisItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -75,8 +75,8 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
       setSignedData(dRes);
       const cs = commRes.summary ?? {};
       setCommission({
-        realise: (cs.signed?.total ?? 0) + (cs.paid?.total ?? 0),
-        aVenir: cs.sent?.total ?? 0,
+        facture:  cs.signed?.total ?? 0,  // Facture Envoyée — paiement attendu
+        encaisse: cs.paid?.total ?? 0,    // Facture Payée — commission encaissée
       });
 
       // Filtre non relancés : envoyés depuis plus de X jours
@@ -97,8 +97,8 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
   const caEnvoye = summary.sent?.total ?? 0;
   const nbEnvoye = summary.sent?.count ?? 0;
   const rate = settings.commission_commercial / 100;
-  const commissionRealisee = commission.realise * rate;
-  const commissionPrevi = commission.aVenir * rate;
+  const commissionEncaissee = commission.encaisse * rate;
+  const commissionFacturee = commission.facture * rate;
   const manqueAGagner = nonRelances.reduce((s, d) => s + (Number(d.montant_ht) || 0), 0);
   const commissionPotentielle = manqueAGagner * rate;
 
@@ -118,24 +118,24 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Devis acceptés en attente de paiement</div>
         </div>
 
-        {/* Commission chantier réalisée */}
+        {/* Commission encaissée (Facture Payée) */}
         <div style={{ flex: 1, minWidth: 150, background: "#f0faf4", border: "1.5px solid #86efac", borderRadius: 14, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission réalisée</span>
-            <InfoTooltip text={`Commission sur devis chantier facturés (signés + payés) sur l'exercice.\n\nFormule : CA chantier (Facture Envoyée + Payée) × ${settings.commission_commercial} %\nBase : ${fmt(commission.realise)} HT\n\nCommission déjà perçue sur cet exercice.`} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission encaissée</span>
+            <InfoTooltip text={`Commission sur devis chantier payés (Facture Payée) sur l'exercice.\n\nFormule : CA chantier payé × ${settings.commission_commercial} %\nBase : ${fmt(commission.encaisse)} HT\n\nLa facture a été réglée — commission effectivement encaissée.`} />
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#16a34a" }}>{fmt(commissionRealisee)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.realise)} CA chantier facturé</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#16a34a" }}>{fmt(commissionEncaissee)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.encaisse)} CA chantier payé</div>
         </div>
 
-        {/* Commission chantier prévisionnelle */}
+        {/* Commission facturée en attente de paiement (Facture Envoyée) */}
         <div style={{ flex: 1, minWidth: 150, background: "#f0f9ff", border: "1.5px solid #93c5fd", borderRadius: 14, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission à venir</span>
-            <InfoTooltip text={`Commission potentielle sur devis chantier envoyés (en attente de réponse).\n\nFormule : CA chantier envoyé × ${settings.commission_commercial} %\nBase : ${fmt(commission.aVenir)} HT\n\nMontant estimé — dépend de l'acceptation par les clients.`} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission à encaisser</span>
+            <InfoTooltip text={`Commission sur devis chantier facturés en attente de paiement (Facture Envoyée) sur l'exercice.\n\nFormule : CA chantier facturé × ${settings.commission_commercial} %\nBase : ${fmt(commission.facture)} HT\n\nLa facture a été envoyée — paiement client attendu.`} />
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#2563eb" }}>{fmt(commissionPrevi)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.aVenir)} devis chantier en attente</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#2563eb" }}>{fmt(commissionFacturee)}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.facture)} CA chantier facturé</div>
         </div>
 
         {/* En attente de réponse */}
