@@ -21,9 +21,9 @@ interface Settings {
   devis_relance_jours: number;
 }
 
-interface AnnualStats {
-  ca_reel_ht: number;         // CA chantier déjà facturé
-  ca_previsionnel_ht: number; // CA chantier total planifié (inclut le réel)
+interface ChantierCommission {
+  realise: number;  // signed + paid, activite null (chantier), exercice
+  aVenir: number;   // sent, activite null (chantier), exercice
 }
 
 const fmt = (n: number) =>
@@ -42,7 +42,7 @@ function daysSince(dateStr: string | null): number {
 export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: { activites?: string[]; exerciceDebut?: string; exerciceFin?: string }) {
   const [settings, setSettings] = useState<Settings>({ ca_objectif: 600000, commission_commercial: 8, devis_relance_jours: 30 });
   const [signedData, setSignedData] = useState<{ summary: Record<string, { count: number; total: number }> } | null>(null);
-  const [annualStats, setAnnualStats] = useState<AnnualStats>({ ca_reel_ht: 0, ca_previsionnel_ht: 0 });
+  const [commission, setCommission] = useState<ChantierCommission>({ realise: 0, aVenir: 0 });
   const [nonRelances, setNonRelances] = useState<DevisItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,13 +54,16 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
       if (exerciceDebut) params.set("debut", exerciceDebut);
       if (exerciceFin) params.set("fin", exerciceFin);
       const devisUrl = `/api/finances/devis?${params}`;
-      const statsParams = new URLSearchParams();
-      if (exerciceDebut) statsParams.set("debut", exerciceDebut);
-      if (exerciceFin) statsParams.set("fin", exerciceFin);
-      const [sRes, dRes, statsRes] = await Promise.all([
+
+      // Commission : toujours sur chantier (activite null) indépendamment du filtre activité
+      const commParams = new URLSearchParams({ statuts: "sent,signed,paid", activites: "chantier", limit: "1" });
+      if (exerciceDebut) commParams.set("debut", exerciceDebut);
+      if (exerciceFin) commParams.set("fin", exerciceFin);
+
+      const [sRes, dRes, commRes] = await Promise.all([
         fetch("/api/settings").then((r) => r.json()),
         fetch(devisUrl).then((r) => r.json()),
-        fetch(`/api/finances/stats?${statsParams}`).then((r) => r.json()),
+        fetch(`/api/finances/devis?${commParams}`).then((r) => r.json()),
       ]);
 
       const s = {
@@ -70,9 +73,10 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
       };
       setSettings(s);
       setSignedData(dRes);
-      setAnnualStats({
-        ca_reel_ht: Number(statsRes.annual?.ca_reel_ht) || 0,
-        ca_previsionnel_ht: Number(statsRes.annual?.ca_previsionnel_ht) || 0,
+      const cs = commRes.summary ?? {};
+      setCommission({
+        realise: (cs.signed?.total ?? 0) + (cs.paid?.total ?? 0),
+        aVenir: cs.sent?.total ?? 0,
       });
 
       // Filtre non relancés : envoyés depuis plus de X jours
@@ -93,10 +97,8 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
   const caEnvoye = summary.sent?.total ?? 0;
   const nbEnvoye = summary.sent?.count ?? 0;
   const rate = settings.commission_commercial / 100;
-  const commissionRealisee = annualStats.ca_reel_ht * rate;
-  // ca_previsionnel inclut le réel → delta = montant non encore facturé
-  const caAVenir = Math.max(0, annualStats.ca_previsionnel_ht - annualStats.ca_reel_ht);
-  const commissionPrevi = caAVenir * rate;
+  const commissionRealisee = commission.realise * rate;
+  const commissionPrevi = commission.aVenir * rate;
   const manqueAGagner = nonRelances.reduce((s, d) => s + (Number(d.montant_ht) || 0), 0);
   const commissionPotentielle = manqueAGagner * rate;
 
@@ -120,20 +122,20 @@ export function CommercialBoard({ activites = [], exerciceDebut, exerciceFin }: 
         <div style={{ flex: 1, minWidth: 150, background: "#f0faf4", border: "1.5px solid #86efac", borderRadius: 14, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission réalisée</span>
-            <InfoTooltip text={`Commission sur CA chantier déjà facturé.\n\nFormule : CA chantier réel × ${settings.commission_commercial} %\nBase : ${fmt(annualStats.ca_reel_ht)} (chantiers facturés Interfast)\n\nCommission déjà perçue sur cet exercice.`} />
+            <InfoTooltip text={`Commission sur devis chantier facturés (signés + payés) sur l'exercice.\n\nFormule : CA chantier (Facture Envoyée + Payée) × ${settings.commission_commercial} %\nBase : ${fmt(commission.realise)} HT\n\nCommission déjà perçue sur cet exercice.`} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#16a34a" }}>{fmt(commissionRealisee)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(annualStats.ca_reel_ht)} CA chantier facturé</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.realise)} CA chantier facturé</div>
         </div>
 
         {/* Commission chantier prévisionnelle */}
         <div style={{ flex: 1, minWidth: 150, background: "#f0f9ff", border: "1.5px solid #93c5fd", borderRadius: 14, padding: "16px 18px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.05em" }}>Commission à venir</span>
-            <InfoTooltip text={`Commission sur la part non encore facturée des chantiers en cours.\n\nFormule : (CA prévisionnel − CA réel) × ${settings.commission_commercial} %\nReste à facturer : ${fmt(caAVenir)}\n\nMontant estimé — dépend de la réalisation effective des chantiers.`} />
+            <InfoTooltip text={`Commission potentielle sur devis chantier envoyés (en attente de réponse).\n\nFormule : CA chantier envoyé × ${settings.commission_commercial} %\nBase : ${fmt(commission.aVenir)} HT\n\nMontant estimé — dépend de l'acceptation par les clients.`} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#2563eb" }}>{fmt(commissionPrevi)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(caAVenir)} CA chantier restant à facturer</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Base : {fmt(commission.aVenir)} devis chantier en attente</div>
         </div>
 
         {/* En attente de réponse */}
