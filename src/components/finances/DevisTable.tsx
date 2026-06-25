@@ -17,6 +17,7 @@ interface ClientStat {
   count_paid: number;   ht_paid: number;
 }
 interface StatsResponse {
+  topClientsDevis: ClientStat[];
   topClientsSigned: ClientStat[];
   topClientsPaid: ClientStat[];
   byMonth: { month: string; count: number; total_ht: number }[];
@@ -195,64 +196,104 @@ export function DevisTable({ activites = [] }: { activites?: string[] }) {
       </div>
 
       {/* ── Top clients ── */}
-      {(stats?.topClientsSigned.length ?? 0) + (stats?.topClientsPaid.length ?? 0) > 0 && (
+      {(stats?.topClientsDevis.length ?? 0) > 0 && (
         <CollapsibleSection
           title="Top clients"
           storageKey="finances.devis.topclients"
-          info={"Deux classements indépendants :\n• Gauche — clients avec le plus de devis Signés (acceptés, en attente de facturation)\n• Droite — clients avec le plus de devis Facturés (CA réellement encaissé)\n\nCes deux listes peuvent être très différentes : un client peut signer beaucoup mais payer lentement."}
+          info={"Trois classements indépendants :\n• Devis — clients qui demandent le plus de chiffrages (tous statuts)\n• Signés — clients qui acceptent le plus en montant HT\n• Facturés — clients qui génèrent le plus de CA encaissé\n\nComparer les trois colonnes permet d'identifier les clients à fort volume qui ne signent jamais, et les clients discrets mais très rentables."}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
 
-            {/* Colonne Signés */}
+            {/* Colonne 1 — Volume de devis */}
             <div style={{ borderRight: "1px solid var(--border)" }}>
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "#faf5f2" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#b5612f", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Signés — Acceptés
+              <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--surface2)" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-soft)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Devis demandés
                 </span>
               </div>
-              {(stats?.topClientsSigned ?? []).map((c, i) => {
-                const max = stats!.topClientsSigned[0].ht_signed;
-                const pct = Math.round((c.ht_signed / max) * 100);
+              {(stats?.topClientsDevis ?? []).map((c, i) => {
+                const max = stats!.topClientsDevis[0].count;
+                const pct = Math.round((c.count / max) * 100);
+                const caTotal = c.ht_signed + c.ht_paid;
                 return (
-                  <div key={c.client} style={{ padding: "9px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                  <div key={c.client} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
                       <div style={{ marginTop: 4, height: 3, background: "var(--border)", borderRadius: 999 }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: "#b5612f", borderRadius: 999, transition: "width 0.4s" }} />
+                        <div style={{ height: "100%", width: `${pct}%`, background: "var(--text-muted)", borderRadius: 999, opacity: 0.5, transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                        {c.count_signed} signé{c.count_signed > 1 ? "s" : ""} · CA {caTotal > 0 ? fmt(caTotal) : "—"}
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#b5612f" }}>{fmt(c.ht_signed)}</div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count_signed} devis</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{c.count}</div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>devis</div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Colonne Facturés */}
+            {/* Colonne 2 — Signés */}
+            <div style={{ borderRight: "1px solid var(--border)" }}>
+              <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "#faf5f2" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#b5612f", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Signés
+                </span>
+              </div>
+              {(stats?.topClientsSigned ?? []).map((c, i) => {
+                const max = stats!.topClientsSigned[0].ht_signed;
+                const pct = Math.round((c.ht_signed / max) * 100);
+                const caTotal = c.ht_signed + c.ht_paid;
+                return (
+                  <div key={c.client} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
+                      <div style={{ marginTop: 4, height: 3, background: "var(--border)", borderRadius: 999 }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: "#b5612f", borderRadius: 999, transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                        {c.count_signed} signé{c.count_signed > 1 ? "s" : ""} · CA {fmt(caTotal)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#b5612f" }}>{fmt(c.ht_signed)}</div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>HT signé</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Colonne 3 — Facturés */}
             <div>
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "#f0faf4" }}>
+              <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "#f0faf4" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Facturés — CA encaissé
+                  Facturés
                 </span>
               </div>
               {(stats?.topClientsPaid ?? []).map((c, i) => {
                 const max = stats!.topClientsPaid[0].ht_paid;
                 const pct = Math.round((c.ht_paid / max) * 100);
+                const caTotal = c.ht_signed + c.ht_paid;
                 return (
-                  <div key={c.client} style={{ padding: "9px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 16, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                  <div key={c.client} style={{ padding: "9px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.client}</div>
                       <div style={{ marginTop: 4, height: 3, background: "var(--border)", borderRadius: 999 }}>
                         <div style={{ height: "100%", width: `${pct}%`, background: "#16a34a", borderRadius: 999, transition: "width 0.4s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                        {c.count_signed} signé{c.count_signed > 1 ? "s" : ""} · CA {fmt(caTotal)}
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>{fmt(c.ht_paid)}</div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.count_paid} devis</div>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>HT facturé</div>
                     </div>
                   </div>
                 );

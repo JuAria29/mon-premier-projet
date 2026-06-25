@@ -34,11 +34,18 @@ export async function GET(req: NextRequest) {
   }
   const allClients = Object.entries(clientMap).map(([client, v]) => ({ client, ...v }));
 
+  // Colonne 1 : volume de devis (tous statuts) — identifier les demandeurs sans conversion
+  const topClientsDevis = allClients
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  // Colonne 2 : devis acceptés (signés)
   const topClientsSigned = allClients
     .filter((c) => c.count_signed > 0)
     .sort((a, b) => b.ht_signed - a.ht_signed)
     .slice(0, 10);
 
+  // Colonne 3 : devis facturés (CA réalisé)
   const topClientsPaid = allClients
     .filter((c) => c.count_paid > 0)
     .sort((a, b) => b.ht_paid - a.ht_paid)
@@ -61,5 +68,5 @@ export async function GET(req: NextRequest) {
     .slice(-12)
     .map(([month, v]) => ({ month, ...v }));
 
-  return NextResponse.json({ topClientsSigned, topClientsPaid, byMonth });
+  return NextResponse.json({ topClientsDevis, topClientsSigned, topClientsPaid, byMonth });
 }
