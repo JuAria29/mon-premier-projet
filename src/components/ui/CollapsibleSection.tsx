@@ -9,14 +9,34 @@ interface Props {
   info?: string;
   defaultOpen?: boolean;
   children: ReactNode;
-  storageKey?: string; // conservé pour compatibilité, non utilisé
+  storageKey?: string;
 }
 
-export function CollapsibleSection({ title, badge, info, defaultOpen = false, children }: Props) {
-  const [open, setOpen] = useState(defaultOpen);
+const PERSIST_PREF_KEY = "aria.sections.persist";
+
+function isPersistEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(PERSIST_PREF_KEY) === "1";
+}
+
+function readSectionState(key: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  const v = localStorage.getItem(key);
+  return v === null ? fallback : v === "1";
+}
+
+export function CollapsibleSection({ title, badge, info, defaultOpen = false, children, storageKey }: Props) {
+  const [open, setOpen] = useState(() => {
+    if (storageKey && isPersistEnabled()) return readSectionState(storageKey, defaultOpen);
+    return defaultOpen;
+  });
 
   function toggle() {
-    setOpen((v) => !v);
+    const next = !open;
+    setOpen(next);
+    if (storageKey && isPersistEnabled()) {
+      localStorage.setItem(storageKey, next ? "1" : "0");
+    }
   }
 
   return (

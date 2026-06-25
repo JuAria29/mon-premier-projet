@@ -25,6 +25,42 @@ const ACTIVITE_CONFIG: Record<Activite, { label: string; color: string; bg: stri
 
 const ALL_ACTIVITES: Activite[] = ["chantier", "maintenance", "sav"];
 
+const PERSIST_PREF_KEY = "aria.sections.persist";
+
+function SectionPersistToggle() {
+  const [persist, setPersist] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem(PERSIST_PREF_KEY) === "1"
+  );
+
+  function toggle() {
+    const next = !persist;
+    setPersist(next);
+    localStorage.setItem(PERSIST_PREF_KEY, next ? "1" : "0");
+  }
+
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+      <div
+        onClick={toggle}
+        style={{
+          width: 32, height: 18, borderRadius: 999, position: "relative",
+          background: persist ? "var(--accent)" : "var(--border)",
+          transition: "background 0.2s", flexShrink: 0, cursor: "pointer",
+        }}
+      >
+        <div style={{
+          position: "absolute", top: 2, left: persist ? 16 : 2,
+          width: 14, height: 14, borderRadius: "50%", background: "#fff",
+          transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+        }} />
+      </div>
+      <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+        Mémoriser les sections
+      </span>
+    </label>
+  );
+}
+
 function SourceBadge({ source }: { source: string }) {
   return (
     <span style={{
@@ -139,11 +175,16 @@ function FinancesInner() {
       <div style={{ padding: "24px 24px 48px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* ── En-tête ── */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: 0 }}>Pilotage</h1>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>
-            Stratégie, commercial — vue Aria Énergies
-          </p>
+        <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text)", margin: 0 }}>Pilotage</h1>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>
+              Stratégie, commercial — vue Aria Énergies
+            </p>
+          </div>
+          <div style={{ paddingTop: 4 }}>
+            <SectionPersistToggle />
+          </div>
         </div>
 
         {/* ── Onglets ── */}
