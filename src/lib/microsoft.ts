@@ -97,6 +97,7 @@ function mapMail(m: Record<string, unknown>): Mail {
     body: bodyObj?.content || "",
     bodyContentType: (bodyObj?.contentType?.toLowerCase() === "text" ? "text" : "html") as "html" | "text",
     preview: (m.bodyPreview as string) || "",
+    webLink: (m.webLink as string) || undefined,
   };
 }
 
@@ -107,7 +108,7 @@ export async function getMailById(userId: string, messageId: string): Promise<Ma
   try {
     const data = await graphFetch(
       token,
-      `/me/messages/${messageId}?$select=id,subject,from,receivedDateTime,bodyPreview,body`
+      `/me/messages/${messageId}?$select=id,subject,from,receivedDateTime,bodyPreview,body,webLink`
     );
     return mapMail(data);
   } catch {
@@ -121,7 +122,7 @@ export async function getEmails(userId: string, count = 30): Promise<Mail[]> {
 
   const data = await graphFetch(
     token,
-    `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body`
+    `/me/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,webLink`
   );
 
   return (data.value ?? []).map(mapMail);
@@ -133,7 +134,7 @@ export async function getEmailsByFolder(userId: string, folderId: string, count 
 
   const data = await graphFetch(
     token,
-    `/me/mailFolders/${folderId}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body`
+    `/me/mailFolders/${folderId}/messages?$top=${count}&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,webLink`
   );
 
   return (data.value ?? []).map(mapMail);
@@ -255,6 +256,35 @@ export async function getNotePages(userId: string): Promise<NotePageItem[]> {
       webUrl: links?.oneNoteWebUrl?.href,
     };
   });
+}
+
+export async function getNoteContent(userId: string, pageId: string): Promise<string> {
+  const token = await getStoredToken(userId);
+  if (!token) throw new Error("not_connected");
+
+  const res = await fetch(`${GRAPH_BASE}/me/onenote/pages/${pageId}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Graph API error ${res.status}`);
+
+  const html = await res.text();
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 4000);
 }
 
 export async function completeTask(userId: string, listId: string, taskId: string): Promise<void> {

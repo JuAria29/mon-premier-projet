@@ -69,6 +69,7 @@ export interface Mail {
   body: string;
   bodyContentType: "html" | "text";
   preview: string;
+  webLink?: string;
 }
 
 export interface GraphTask {

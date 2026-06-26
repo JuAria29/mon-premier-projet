@@ -5,21 +5,21 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icons";
 import type { GraphTask } from "@/types";
 
-function importanceColor(importance: string) {
-  if (importance === "high") return "var(--accent)";
-  if (importance === "normal") return "var(--info)";
-  return "var(--text-muted)";
-}
-
-function importanceLabel(importance: string) {
-  if (importance === "high") return "Haute";
-  if (importance === "normal") return "Normale";
-  return "Faible";
+interface TaskAnalysis {
+  vue: string;
+  priorites: { title: string; raison: string }[];
+  conseil: string;
 }
 
 function formatDue(iso?: string) {
   if (!iso) return null;
   return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+function importanceColor(importance: string) {
+  if (importance === "high") return "var(--accent)";
+  if (importance === "normal") return "var(--info)";
+  return "var(--text-muted)";
 }
 
 interface TaskList {
@@ -33,23 +33,29 @@ export default function TachesPage() {
   const [lists, setLists] = useState<TaskList[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [notConnected, setNotConnected] = useState(false);
-
   const [completing, setCompleting] = useState<Set<string>>(new Set());
   const [completed, setCompleted] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState<Set<string>>(new Set());
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-
   const [showAddForm, setShowAddForm] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDue, setNewDue] = useState("");
   const [adding, setAdding] = useState(false);
   const [workspace, setWorkspace] = useState<"pro" | "perso">("pro");
+  const [ton, setTon] = useState("direct");
+  const [analysis, setAnalysis] = useState<TaskAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   useEffect(() => {
     const ws = (localStorage.getItem("aria-active-workspace") as "pro" | "perso") ?? "pro";
     setWorkspace(ws);
+
+    try {
+      const s = localStorage.getItem("aria-settings");
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (parsed.ton) setTon(parsed.ton);
+      }
+    } catch { /* ignore */ }
 
     fetch(`/api/microsoft/tasks?workspace=${ws}`)
       .then(async (r) => {
@@ -88,36 +94,6 @@ export default function TachesPage() {
     }
   }
 
-  async function deleteTask(task: GraphTask) {
-    if (!task.listId) return;
-    if (!confirm(`Supprimer "${task.title}" ?`)) return;
-    setDeleting((prev) => new Set(prev).add(task.id));
-    try {
-      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listId: task.listId, taskId: task.id }),
-      });
-      if (res.ok) setTasks((prev) => prev.filter((t) => t.id !== task.id));
-    } finally {
-      setDeleting((prev) => { const s = new Set(prev); s.delete(task.id); return s; });
-    }
-  }
-
-  async function saveRename(task: GraphTask) {
-    if (!task.listId || !editTitle.trim()) { setEditingId(null); return; }
-    try {
-      const res = await fetch(`/api/microsoft/tasks?workspace=${workspace}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listId: task.listId, taskId: task.id, action: "rename", title: editTitle }),
-      });
-      if (res.ok) setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, title: editTitle } : t));
-    } finally {
-      setEditingId(null);
-    }
-  }
-
   async function addTask(listId: string) {
     if (!newTitle.trim()) return;
     setAdding(true);
@@ -137,6 +113,26 @@ export default function TachesPage() {
       }
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function analyzeWithAria() {
+    if (tasks.length === 0) return;
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch("/api/coach/analyze-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks, ton }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAnalyzeError(data.error || "Erreur lors de l'analyse");
+      else setAnalysis(data);
+    } catch {
+      setAnalyzeError("Erreur de connexion au serveur");
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -164,7 +160,8 @@ export default function TachesPage() {
     <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "32px 24px" }}>
       <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        {/* En-tête */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={() => router.push("/")} className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }}>
             <Icon name="chevron" size={14} style={{ transform: "rotate(180deg)" }} />
             Retour
@@ -173,8 +170,67 @@ export default function TachesPage() {
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", margin: 0 }}>Tâches</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Microsoft To Do</p>
           </div>
+          <a
+            href="https://to-do.office.com/tasks/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost"
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, textDecoration: "none", color: "var(--text)" }}
+          >
+            <Icon name="externalLink" size={14} />
+            Ouvrir To Do
+          </a>
+          {!loadingTasks && tasks.length > 0 && (
+            <button
+              className="btn-primary"
+              onClick={analyzeWithAria}
+              disabled={analyzing}
+              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
+            >
+              <Icon name="bolt" size={14} />
+              {analyzing ? "Analyse…" : "Analyser avec Aria"}
+            </button>
+          )}
         </div>
 
+        {/* Carte analyse */}
+        {analyzeError && (
+          <div style={{ padding: "12px 16px", borderRadius: 10, background: "color-mix(in srgb, var(--accent) 10%, white)", border: "1px solid color-mix(in srgb, var(--accent) 30%, white)" }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--accent)" }}>Erreur : {analyzeError}</p>
+          </div>
+        )}
+
+        {analysis && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="card" style={{ padding: "16px 20px", borderLeft: "3px solid var(--accent)" }}>
+              <p className="kicker" style={{ marginBottom: 8 }}>Vue d&apos;ensemble</p>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--text)", lineHeight: 1.6 }}>{analysis.vue}</p>
+            </div>
+            {analysis.priorites.length > 0 && (
+              <div className="card" style={{ padding: "16px 20px", background: "var(--accent-soft)" }}>
+                <p className="kicker" style={{ marginBottom: 12 }}>Priorités du moment</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {analysis.priorites.map((p, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", background: "white", borderRadius: 999, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{p.title}</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-soft)" }}>{p.raison}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {analysis.conseil && (
+              <div className="card" style={{ padding: "12px 20px" }}>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text)", fontStyle: "italic" }}>💡 {analysis.conseil}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Listes de tâches */}
         {loadingTasks ? (
           <div className="card" style={{ padding: 20 }}>
             <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>Chargement…</p>
@@ -222,17 +278,10 @@ export default function TachesPage() {
                   {listTasks.map((task) => {
                     const isDone = completed.has(task.id);
                     const isCompleting = completing.has(task.id);
-                    const isDeleting = deleting.has(task.id);
-                    const isEditing = editingId === task.id;
-
                     return (
                       <div
                         key={task.id}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "9px 4px",
-                          borderBottom: "1px solid var(--border)", opacity: isDone || isDeleting ? 0.4 : 1,
-                          transition: "opacity 0.3s",
-                        }}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 4px", borderBottom: "1px solid var(--border)", opacity: isDone ? 0.4 : 1, transition: "opacity 0.3s" }}
                       >
                         <button
                           onClick={() => completeTask(task)}
@@ -249,59 +298,21 @@ export default function TachesPage() {
                         >
                           {isDone && <span style={{ color: "white", fontSize: 10 }}>✓</span>}
                         </button>
-
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          {isEditing ? (
-                            <input
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              onBlur={() => saveRename(task)}
-                              onKeyDown={(e) => { if (e.key === "Enter") saveRename(task); if (e.key === "Escape") setEditingId(null); }}
-                              autoFocus
-                              style={{ width: "100%", padding: "3px 8px", borderRadius: 6, border: "1.5px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "inherit", outline: "none" }}
-                            />
-                          ) : (
-                            <p
-                              style={{ margin: 0, fontSize: 14, color: "var(--text)", fontWeight: 500, textDecoration: isDone ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                              title="Double-cliquer pour renommer"
-                            >
-                              {task.title}
-                            </p>
-                          )}
+                          <p style={{ margin: 0, fontSize: 14, color: "var(--text)", fontWeight: 500, textDecoration: isDone ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {task.title}
+                          </p>
                           {task.dueDateTime && (
                             <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
                               Échéance : {formatDue(task.dueDateTime)}
                             </p>
                           )}
                         </div>
-
-                        <span style={{
-                          fontSize: 11, fontWeight: 600, color: importanceColor(task.importance),
-                          padding: "2px 7px", borderRadius: 999,
-                          background: task.importance === "high" ? "var(--accent-soft)" : "var(--surface-2)",
-                          flexShrink: 0,
-                        }}>
-                          {importanceLabel(task.importance)}
-                        </span>
-
-                        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                          <button
-                            className="btn-ghost"
-                            onClick={() => { setEditingId(task.id); setEditTitle(task.title); }}
-                            title="Renommer"
-                            style={{ padding: "4px 6px", opacity: 0.6 }}
-                          >
-                            <Icon name="edit" size={13} />
-                          </button>
-                          <button
-                            className="btn-ghost"
-                            onClick={() => deleteTask(task)}
-                            title="Supprimer"
-                            style={{ padding: "4px 6px", color: "var(--accent)", opacity: 0.7 }}
-                          >
-                            <Icon name="trash" size={13} />
-                          </button>
-                        </div>
+                        {task.importance === "high" && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: importanceColor(task.importance), padding: "2px 7px", borderRadius: 999, background: "var(--accent-soft)", flexShrink: 0 }}>
+                            Haute
+                          </span>
+                        )}
                       </div>
                     );
                   })}
